@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - include:
+      file: changes/001-conversa.sql
+      relativeToChangelogFile: true
+  - include:
+      file: changes/002-fila-e-contatos.sql
+      relativeToChangelogFile: true
+  - include:
+      file: changes/003-prompt-agente.sql
+      relativeToChangelogFile: true

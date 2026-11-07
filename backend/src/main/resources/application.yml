@@ -1,0 +1,23 @@
+spring:
+  application:
+    name: atendente-whatsapp
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/corretor}
+    username: ${DB_USER:corretor}
+    password: ${DB_PASSWORD:corretor}
+  liquibase:
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+
+corretor:
+  # Segredo que a Evolution envia no header "apikey" do webhook. Vazio = webhook recusa tudo.
+  webhook-segredo: ${WEBHOOK_SEGREDO:}
+  conversa:
+    limite-respostas: 20
+    reinicio-apos: 7d
+    janela-agrupamento: 4s
+    sondagem-fila: 1s
+    maximo-tentativas: 3
+  evolution:
+    base-url: ${EVOLUTION_URL:http://localhost:8080}
+    instancia: ${EVOLUTION_INSTANCIA:corretor}
+    api-key: ${EVOLUTION_API_KEY:}
