@@ -32,7 +32,8 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
         properties = {
                 "bizu.conversa.janela-agrupamento=0s",
                 "bizu.conversa.sondagem-fila=1h",
-                "bizu.webhook-segredo=teste"
+                "bizu.webhook-segredo=teste",
+                "bizu.painel.jwt-segredo=segredo-de-teste-com-mais-de-32-caracteres"
         })
 class FluxoDeConversaIT {
 

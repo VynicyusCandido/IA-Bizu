@@ -45,7 +45,7 @@ stateDiagram-v2
 **AD-1 Backend: monólito modular em Java com Spring Boot e Postgres.**
 - Binds: toda a lógica, conversas, fila, API.
 - Prevents: microsserviços e Redis prematuros; dados divergentes entre serviços.
-- Rule: um deploy de backend, um banco. Módulos: `conversa` (núcleo: estados, fila, leads, portas `Canal` e `Agente`), `whatsapp` (webhook e adaptador da Evolution), `agente` (adaptador da IA), `painel` (futuro). Os módulos de borda dependem do núcleo, nunca o contrário. Fronteiras verificadas com Spring Modulith; módulo só chama outro pela interface pública.
+- Rule: um deploy de backend, um banco. Módulos: `conversa` (núcleo: estados, fila, leads, portas `Canal` e `Agente`), `whatsapp` (webhook e adaptador da Evolution), `agente` (adaptador da IA, Claude por `BIZU_AGENTE=claude`), `painel` (login e API do prompt). Os módulos de borda dependem do núcleo, nunca o contrário. Fronteiras verificadas com Spring Modulith; módulo só chama outro pela interface pública.
 
 **AD-2 Esquema do banco versionado com Liquibase, em changelogs SQL.**
 - Binds: toda mudança de tabela.
@@ -90,7 +90,8 @@ stateDiagram-v2
 **AD-9 Front em Next.js (TypeScript) com shadcn/ui, só como cliente da API REST do backend.**
 - Binds: painel mínimo (QR, prompt, conversas).
 - Prevents: regra de negócio no front; dois pontos de verdade.
-- Rule: o front não acessa o banco nem a Evolution; tudo passa pela API do backend. Login com Google (OIDC) validado no backend, só para o e-mail do corretor configurado; o backend emite um JWT de sessão com expiração e a API só aceita esse JWT. Pastas `backend/` e `frontend/` na raiz.
+- Rule: o front não acessa o banco nem a Evolution; tudo passa pela API do backend. Login com Google (OIDC) validado no backend, só para o e-mail do corretor configurado; o backend emite um JWT de sessão (HS256, 8 h) e a API só aceita esse JWT. Pastas `backend/` e `frontend/` na raiz.
+- Implementado no módulo `painel`: `POST /api/auth/google` (corpo `{idToken}`, devolve `{token, expiraEm}`; 401 token inválido, 403 outra conta), `GET /api/prompt` e `PUT /api/prompt` (corpo `{base}`, máximo 8000 caracteres). `GET` devolve `base` (editável), `estilo` e `regrasFixas` (somente leitura). Variáveis de ambiente: `GOOGLE_CLIENT_ID`, `BIZU_EMAIL_CORRETOR`, `BIZU_JWT_SEGREDO` (mínimo 32 caracteres; sem ele a aplicação não sobe), `BIZU_PAINEL_ORIGEM` (padrão `http://localhost:3000`). O webhook da Evolution fica fora do JWT e se protege pelo segredo no header.
 
 ## Pilha (seed, o código passa a ser dono depois)
 

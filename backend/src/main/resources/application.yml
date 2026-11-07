@@ -17,6 +17,20 @@ bizu:
     janela-agrupamento: 4s
     sondagem-fila: 1s
     maximo-tentativas: 3
+  painel:
+    # Login do painel: ID token do Google, só para o e-mail do corretor, e sessão em JWT do próprio Bizu.
+    # Tudo vem de variáveis de ambiente; o segredo precisa ter ao menos 32 caracteres.
+    google-client-id: ${GOOGLE_CLIENT_ID:}
+    email-corretor: ${BIZU_EMAIL_CORRETOR:}
+    jwt-segredo: ${BIZU_JWT_SEGREDO:}
+    jwt-validade: 8h
+    origem-permitida: ${BIZU_PAINEL_ORIGEM:http://localhost:3000}
+  agente:
+    # inativo = não responde ninguém (conversa fica com o corretor); claude = usa a API da Anthropic.
+    # A chave vem só da variável de ambiente ANTHROPIC_API_KEY, nunca deste arquivo.
+    tipo: ${BIZU_AGENTE:inativo}
+    modelo: claude-haiku-5-5
+    max-tokens: 4096
   evolution:
     base-url: ${EVOLUTION_URL:http://localhost:8080}
     instancia: ${EVOLUTION_INSTANCIA:bizu}
