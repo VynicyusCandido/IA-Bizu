@@ -1,10 +1,10 @@
 ---
-id: ARQ-whatsapp-corretor
+id: ARQ-bizu
 spec: SPEC.md
 status: draft
 ---
 
-# Arquitetura: atendente de IA no WhatsApp (corretor)
+# Arquitetura do Bizu: atendente de IA no WhatsApp (corretor)
 
 **Paradigma:** monólito modular em Java/Spring Boot, orientado a eventos de mensagem, com máquina de estados por conversa. Um processo de backend, um banco, um front. WhatsApp, IA e catálogo ficam atrás de portas (interfaces) trocáveis.
 

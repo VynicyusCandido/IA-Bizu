@@ -1,9 +1,9 @@
 ---
-id: SPEC-whatsapp-corretor
+id: SPEC-bizu
 companions: [ARQUITETURA.md]
 ---
 
-# Atendente de IA no WhatsApp para corretor de imóveis
+# Bizu: atendente de IA no WhatsApp para corretor de imóveis
 
 ## Why
 

@@ -1,14 +1,14 @@
 spring:
   application:
-    name: atendente-whatsapp
+    name: bizu
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/corretor}
-    username: ${DB_USER:corretor}
-    password: ${DB_PASSWORD:corretor}
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/bizu}
+    username: ${DB_USER:bizu}
+    password: ${DB_PASSWORD:bizu}
   liquibase:
     change-log: classpath:db/changelog/db.changelog-master.yaml
 
-corretor:
+bizu:
   # Segredo que a Evolution envia no header "apikey" do webhook. Vazio = webhook recusa tudo.
   webhook-segredo: ${WEBHOOK_SEGREDO:}
   conversa:
@@ -19,5 +19,5 @@ corretor:
     maximo-tentativas: 3
   evolution:
     base-url: ${EVOLUTION_URL:http://localhost:8080}
-    instancia: ${EVOLUTION_INSTANCIA:corretor}
+    instancia: ${EVOLUTION_INSTANCIA:bizu}
     api-key: ${EVOLUTION_API_KEY:}

@@ -1,4 +1,4 @@
-# Plano MVP: IA que responde WhatsApp com portfólio
+# Plano MVP do Bizu: IA que responde WhatsApp com portfólio
 
 **Objetivo:** provar que a IA responde clientes só com o portfólio cadastrado, sem inventar, e passa a um humano o que não souber.
 

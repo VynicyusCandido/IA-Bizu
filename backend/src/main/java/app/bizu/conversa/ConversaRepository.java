@@ -1,4 +1,4 @@
-package app.corretor.conversa;
+package app.bizu.conversa;
 
 import java.time.Instant;
 import java.util.Optional;

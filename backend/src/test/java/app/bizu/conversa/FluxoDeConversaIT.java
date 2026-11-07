@@ -1,11 +1,11 @@
-package app.corretor.conversa;
+package app.bizu.conversa;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import app.corretor.AtendenteWhatsappApplication;
-import app.corretor.conversa.Agente.Qualificacao;
-import app.corretor.conversa.Agente.RespostaAgente;
-import app.corretor.conversa.ConversaService.Resultado;
+import app.bizu.BizuApplication;
+import app.bizu.conversa.Agente.Qualificacao;
+import app.bizu.conversa.Agente.RespostaAgente;
+import app.bizu.conversa.ConversaService.Resultado;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -28,11 +28,11 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 /** Fluxo completo contra um Postgres real (Liquibase aplica o esquema). Ignorado se o Docker não estiver ativo. */
 @Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest(
-        classes = {AtendenteWhatsappApplication.class, FluxoDeConversaIT.Dublês.class},
+        classes = {BizuApplication.class, FluxoDeConversaIT.Dublês.class},
         properties = {
-                "corretor.conversa.janela-agrupamento=0s",
-                "corretor.conversa.sondagem-fila=1h",
-                "corretor.webhook-segredo=teste"
+                "bizu.conversa.janela-agrupamento=0s",
+                "bizu.conversa.sondagem-fila=1h",
+                "bizu.webhook-segredo=teste"
         })
 class FluxoDeConversaIT {
 

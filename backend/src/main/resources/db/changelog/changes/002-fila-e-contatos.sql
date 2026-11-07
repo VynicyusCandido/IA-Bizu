@@ -1,6 +1,6 @@
 --liquibase formatted sql
 
---changeset corretor:002-fila-e-contatos
+--changeset bizu:002-fila-e-contatos
 -- Fila de mensagens do cliente aguardando resposta da IA (consumida por conversa).
 create table fila_mensagem (
     id            bigserial primary key,

@@ -1,16 +1,16 @@
-package app.corretor.agente;
+package app.bizu.agente;
 
-import app.corretor.conversa.Agente;
+import app.bizu.conversa.Agente;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 /**
  * Agente padrão enquanto não há adaptador de IA configurado: não responde ninguém e deixa a conversa
  * com o corretor. É o comportamento seguro. O adaptador real do Claude entra com
- * {@code corretor.agente.tipo=claude}.
+ * {@code bizu.agente.tipo=claude}.
  */
 @Component
-@ConditionalOnProperty(name = "corretor.agente.tipo", havingValue = "inativo", matchIfMissing = true)
+@ConditionalOnProperty(name = "bizu.agente.tipo", havingValue = "inativo", matchIfMissing = true)
 class AgenteInativo implements Agente {
 
     @Override

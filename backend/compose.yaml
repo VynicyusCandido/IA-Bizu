@@ -3,9 +3,9 @@ services:
   postgres:
     image: postgres:17
     environment:
-      POSTGRES_DB: corretor
-      POSTGRES_USER: corretor
-      POSTGRES_PASSWORD: corretor
+      POSTGRES_DB: bizu
+      POSTGRES_USER: bizu
+      POSTGRES_PASSWORD: bizu
     ports:
       - "5432:5432"
     volumes:

@@ -1,6 +1,6 @@
 --liquibase formatted sql
 
---changeset corretor:001-conversa
+--changeset bizu:001-conversa
 create table conversa (
     id                  uuid primary key,
     telefone            varchar(32) not null,

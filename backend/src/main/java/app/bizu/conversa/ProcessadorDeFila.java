@@ -1,9 +1,9 @@
-package app.corretor.conversa;
+package app.bizu.conversa;
 
-import app.corretor.conversa.Agente.Contexto;
-import app.corretor.conversa.Agente.RespostaAgente;
-import app.corretor.conversa.MensagemRepository.Direcao;
-import app.corretor.conversa.MensagemRepository.Origem;
+import app.bizu.conversa.Agente.Contexto;
+import app.bizu.conversa.Agente.RespostaAgente;
+import app.bizu.conversa.MensagemRepository.Direcao;
+import app.bizu.conversa.MensagemRepository.Origem;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;

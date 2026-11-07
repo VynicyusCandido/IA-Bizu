@@ -1,4 +1,4 @@
-package app.corretor.conversa;
+package app.bizu.conversa;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;

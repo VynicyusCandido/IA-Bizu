@@ -1,6 +1,6 @@
-package app.corretor.whatsapp;
+package app.bizu.whatsapp;
 
-import app.corretor.conversa.Canal;
+import app.bizu.conversa.Canal;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.Map;
 import org.springframework.stereotype.Component;

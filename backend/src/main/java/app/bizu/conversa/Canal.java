@@ -1,4 +1,4 @@
-package app.corretor.conversa;
+package app.bizu.conversa;
 
 /** Porta de saída para o WhatsApp. O domínio só conhece esta interface. */
 public interface Canal {

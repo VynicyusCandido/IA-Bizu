@@ -1,4 +1,4 @@
-package app.corretor.conversa;
+package app.bizu.conversa;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;

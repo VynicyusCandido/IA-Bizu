@@ -1,4 +1,4 @@
-package app.corretor.whatsapp;
+package app.bizu.whatsapp;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.Optional;

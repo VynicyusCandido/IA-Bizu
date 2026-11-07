@@ -1,6 +1,6 @@
 --liquibase formatted sql
 
---changeset corretor:003-prompt-agente
+--changeset bizu:003-prompt-agente
 -- BASE: prompt do agente editável pelo corretor. ESTILO: perfil gerado das conversas dele.
 create table prompt_agente (
     chave         varchar(16) primary key check (chave in ('BASE', 'ESTILO')),

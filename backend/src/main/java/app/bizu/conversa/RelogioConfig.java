@@ -1,4 +1,4 @@
-package app.corretor.conversa;
+package app.bizu.conversa;
 
 import java.time.Clock;
 import org.springframework.context.annotation.Bean;

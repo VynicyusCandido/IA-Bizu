@@ -1,8 +1,8 @@
-package app.corretor.conversa;
+package app.bizu.conversa;
 
-import app.corretor.conversa.ContatoIgnoradoRepository.Motivo;
-import app.corretor.conversa.MensagemRepository.Direcao;
-import app.corretor.conversa.MensagemRepository.Origem;
+import app.bizu.conversa.ContatoIgnoradoRepository.Motivo;
+import app.bizu.conversa.MensagemRepository.Direcao;
+import app.bizu.conversa.MensagemRepository.Origem;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;

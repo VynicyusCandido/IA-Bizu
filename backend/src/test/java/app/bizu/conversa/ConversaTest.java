@@ -1,4 +1,4 @@
-package app.corretor.conversa;
+package app.bizu.conversa;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

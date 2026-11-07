@@ -1,9 +1,9 @@
-package app.corretor.conversa;
+package app.bizu.conversa;
 
 import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
-@ConfigurationProperties("corretor.conversa")
+@ConfigurationProperties("bizu.conversa")
 public record ConversaProperties(
         int limiteRespostas,
         Duration reinicioApos,

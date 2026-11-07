@@ -1,4 +1,4 @@
-package app.corretor.conversa;
+package app.bizu.conversa;
 
 import java.time.Clock;
 import org.slf4j.Logger;
@@ -20,7 +20,7 @@ class FilaWorker {
         this.relogio = relogio;
     }
 
-    @Scheduled(fixedDelayString = "${corretor.conversa.sondagem-fila}")
+    @Scheduled(fixedDelayString = "${bizu.conversa.sondagem-fila}")
     void sondar() {
         try {
             while (processador.processarProxima(relogio.instant())) {

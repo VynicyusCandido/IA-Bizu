@@ -1,6 +1,6 @@
-package app.corretor.whatsapp;
+package app.bizu.whatsapp;
 
-import app.corretor.conversa.ConversaService;
+import app.bizu.conversa.ConversaService;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Clock;
@@ -22,7 +22,7 @@ class WebhookController {
     private final String segredo;
 
     WebhookController(ConversaService conversas, Clock relogio,
-                      @Value("${corretor.webhook-segredo:}") String segredo) {
+                      @Value("${bizu.webhook-segredo:}") String segredo) {
         this.conversas = conversas;
         this.relogio = relogio;
         this.segredo = segredo;
