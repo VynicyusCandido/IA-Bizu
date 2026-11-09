@@ -51,6 +51,8 @@ class FluxoDeConversaIT {
     static final List<String> enviados = new ArrayList<>();
     static RespostaAgente proximaResposta;
     static RuntimeException falhaDoAgente;
+    /** Roda dentro da chamada da IA: simula o que acontece enquanto o Claude ainda está pensando. */
+    static Runnable duranteOAgente;
 
     @TestConfiguration
     static class Dublês {
@@ -69,6 +71,9 @@ class FluxoDeConversaIT {
         @Primary
         Agente agenteFalso() {
             return contexto -> {
+                if (duranteOAgente != null) {
+                    duranteOAgente.run();
+                }
                 if (falhaDoAgente != null) {
                     throw falhaDoAgente;
                 }
@@ -91,6 +96,22 @@ class FluxoDeConversaIT {
         enviados.clear();
         proximaResposta = null;
         falhaDoAgente = null;
+        duranteOAgente = null;
+    }
+
+    @Test
+    void corretorAssumeEnquantoAIAPensaEARespostaNaoEEnviada() {
+        service.receberDoCliente(CLIENTE, "Olá", "WA-1", T0);
+        UUID id = jdbc.sql("select id from conversa").query(UUID.class).single();
+        // A conversa não pode estar travada durante a chamada da IA: o painel consegue assumir sem esperar.
+        duranteOAgente = () -> service.assumir(id, T0);
+
+        processador.processarProxima(T0.plusSeconds(1));
+
+        assertThat(enviados).isEmpty();
+        assertThat(estado(CLIENTE)).isEqualTo("HUMANO");
+        assertThat(respostasIa(CLIENTE)).isZero();
+        assertThat(jdbc.sql("select count(*) from fila_mensagem").query(Integer.class).single()).isZero();
     }
 
     @Test

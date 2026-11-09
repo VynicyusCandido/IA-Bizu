@@ -41,10 +41,10 @@ Pré-requisitos: Java 21, Maven e Docker.
 ```bash
 cd backend
 docker compose up -d
-mvn spring-boot:run
+mvn spring-boot:run -Dspring-boot.run.profiles=dev
 ```
 
-O `compose.yaml` sobe só o Postgres (banco e usuário `bizu`, senha `2222`, só para uso local). O backend roda na máquina, na porta 8080. Se você já tinha um volume antigo do Postgres, recrie-o com `docker compose down -v`.
+O `compose.yaml` sobe só o Postgres (banco e usuário `bizu`, senha `2222`, só para uso local). O perfil `dev` (`application-dev.yml`) é o único lugar com essa senha; sem ele o backend exige `DB_PASSWORD`. O backend roda na máquina, na porta 8080. Se você já tinha um volume antigo do Postgres, recrie-o com `docker compose down -v`.
 
 Para conectar um WhatsApp de verdade, suba também a Evolution API (o conector que liga o número por QR code), que fica à parte:
 
@@ -66,7 +66,7 @@ Variáveis de ambiente:
 | `GOOGLE_CLIENT_ID`, `BIZU_EMAIL_CORRETOR` | login com Google e e-mail do corretor |
 | `BIZU_JWT_SEGREDO` | assina a sessão do painel (mínimo de 32 caracteres; sem ele a aplicação não sobe) |
 | `BIZU_PAINEL_ORIGEM` | endereço do painel permitido no CORS (padrão `http://localhost:3000`) |
-| `DB_URL`, `DB_USER`, `DB_PASSWORD` | conexão com o Postgres |
+| `DB_URL`, `DB_USER`, `DB_PASSWORD` | conexão com o Postgres; `DB_PASSWORD` não tem padrão (em dev, use o perfil `dev`) |
 
 Testes (os de integração usam um Postgres em contêiner e precisam do Docker):
 

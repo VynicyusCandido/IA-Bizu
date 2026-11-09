@@ -1,0 +1,4 @@
+# Só para desenvolvimento local: casa com o Postgres do compose.yaml. Nunca ative este perfil em produção.
+spring:
+  datasource:
+    password: "2222"

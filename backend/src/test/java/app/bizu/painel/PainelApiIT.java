@@ -196,6 +196,7 @@ class PainelApiIT {
 
         assertThat(lista.statusCode()).isEqualTo(200);
         assertThat(lista.body()).contains("5511988887777").contains("BOT").contains("Centro").contains("3 meses");
+        assertThat(lista.body()).contains("\"ultimaMensagem\":\"Quero comprar\"").contains("\"ultimaOrigem\":\"CLIENTE\"");
         Matcher id = Pattern.compile("\"id\"\s*:\s*\"([^\"]+)\"").matcher(lista.body());
         assertThat(id.find()).isTrue();
 

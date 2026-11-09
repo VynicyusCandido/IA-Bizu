@@ -28,6 +28,14 @@ class FilaRepository {
                 .update();
     }
 
+    /** Empurra a disponibilidade de toda a fila da conversa (reserva enquanto a IA responde). */
+    void adiar(UUID conversaId, Instant ate) {
+        jdbc.sql("update fila_mensagem set disponivel_em = :d where conversa_id = :c")
+                .param("c", conversaId)
+                .param("d", Tempo.sql(ate))
+                .update();
+    }
+
     List<Long> idsDaConversa(UUID conversaId) {
         return jdbc.sql("select id from fila_mensagem where conversa_id = :c order by id")
                 .param("c", conversaId)

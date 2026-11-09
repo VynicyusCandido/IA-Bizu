@@ -76,8 +76,13 @@ class ConversaRepository {
     List<ConversaService.ConversaResumo> listarResumos() {
         return jdbc.sql("""
                 select c.id, c.telefone, c.estado, c.respostas_ia, c.ultima_atividade_em,
-                       l.finalidade, l.regiao, l.faixa_valor, l.prazo, l.imovel_citado
-                  from conversa c left join lead l on l.conversa_id = c.id
+                       l.finalidade, l.regiao, l.faixa_valor, l.prazo, l.imovel_citado,
+                       left(u.texto, 120) as ultima_mensagem, u.origem as ultima_origem
+                  from conversa c
+                  left join lead l on l.conversa_id = c.id
+                  left join lateral (select texto, origem from mensagem m
+                                      where m.conversa_id = c.id
+                                      order by m.criada_em desc, m.id desc limit 1) u on true
                  where c.ativa
                  order by c.ultima_atividade_em desc
                  limit 200
@@ -92,7 +97,9 @@ class ConversaRepository {
                         rs.getString("regiao"),
                         rs.getString("faixa_valor"),
                         rs.getString("prazo"),
-                        rs.getString("imovel_citado")))
+                        rs.getString("imovel_citado"),
+                        rs.getString("ultima_mensagem"),
+                        rs.getString("ultima_origem")))
                 .list();
     }
 

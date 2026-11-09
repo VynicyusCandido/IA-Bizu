@@ -18,10 +18,13 @@ public class ConversaService {
     /** Eco: mensagem que o próprio sistema enviou e voltou do WhatsApp como "do corretor". */
     public enum Resultado { ENFILEIRADA, REGISTRADA, IGNORADA, DUPLICADA, ECO, ASSUMIDA }
 
-    /** Linha do painel: a conversa e o que a IA descobriu do cliente. */
+    /**
+     * Linha do painel: a conversa, o que a IA descobriu do cliente e a prévia da última mensagem
+     * (até 120 caracteres; {@code ultimaOrigem} é CLIENTE, IA ou CORRETOR).
+     */
     public record ConversaResumo(UUID id, String telefone, Estado estado, int respostasIa, Instant ultimaAtividadeEm,
                                  String finalidade, String regiao, String faixaValor, String prazo,
-                                 String imovelCitado) {
+                                 String imovelCitado, String ultimaMensagem, String ultimaOrigem) {
     }
 
     private static final Duration JANELA_ECO = Duration.ofSeconds(60);
