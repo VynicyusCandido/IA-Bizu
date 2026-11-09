@@ -1,0 +1,42 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    paths: ["backend/**", ".github/workflows/build.yml"]
+  pull_request:
+    paths: ["backend/**", ".github/workflows/build.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      # Só compila e empacota; os testes rodam no workflow "Testes".
+      - name: Compilar e empacotar
+        run: mvn -B -ntp -DskipTests package
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bizu-jar
+          path: backend/target/bizu-*.jar
+          if-no-files-found: error
+          retention-days: 7
