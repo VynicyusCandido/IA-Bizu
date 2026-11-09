@@ -1,0 +1,43 @@
+# Opcional: só precisa subir quando for conectar um WhatsApp de verdade (Evolution API, conexão por QR code).
+# Credenciais de teste, não usar em produção.
+# Uso: export EVOLUTION_API_KEY=<uma chave sua> && docker compose -f compose.evolution.yaml up -d
+services:
+  # Banco próprio da Evolution: ela cria e mexe nas suas tabelas, separado do banco do Bizu.
+  evolution-db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: evolution
+      POSTGRES_USER: evolution
+      POSTGRES_PASSWORD: "2222"
+    volumes:
+      - evolution_pgdata:/var/lib/postgresql/data
+
+  evolution:
+    image: evoapicloud/evolution-api:v2.3.7
+    depends_on:
+      - evolution-db
+    ports:
+      # 8081 no computador, porque o backend do Bizu usa a 8080.
+      - "127.0.0.1:8081:8080"
+    extra_hosts:
+      # Deixa a Evolution chamar o backend que roda na máquina (webhook em http://host.docker.internal:8080).
+      - "host.docker.internal:host-gateway"
+    environment:
+      SERVER_URL: http://localhost:8081
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY:?defina EVOLUTION_API_KEY antes de subir}
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://evolution:2222@evolution-db:5432/evolution
+      DATABASE_CONNECTION_CLIENT_NAME: bizu
+      # O Bizu lê o histórico, os contatos e as mensagens pela Evolution: ela precisa guardá-los.
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
+      DATABASE_SAVE_DATA_CONTACTS: "true"
+      DATABASE_SAVE_DATA_CHATS: "true"
+      CACHE_REDIS_ENABLED: "false"
+      CACHE_LOCAL_ENABLED: "true"
+    volumes:
+      - evolution_instances:/evolution/instances
+
+volumes:
+  evolution_pgdata:
+  evolution_instances:

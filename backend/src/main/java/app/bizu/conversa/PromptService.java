@@ -27,6 +27,11 @@ public class PromptService {
     }
 
     @Transactional
+    public void salvarEstilo(String conteudo, Instant agora) {
+        prompts.salvar("ESTILO", conteudo, agora);
+    }
+
+    @Transactional
     public void salvarBase(String conteudo, Instant agora) {
         prompts.salvar("BASE", conteudo, agora);
     }

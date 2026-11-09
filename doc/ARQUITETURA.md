@@ -60,7 +60,7 @@ stateDiagram-v2
 **AD-4 Conversa é uma máquina de estados persistida: BOT, HUMANO, ENCERRADA.**
 - Binds: CAP-4, CAP-5.
 - Prevents: IA e corretor respondendo juntos; 21ª mensagem.
-- Rule: estado e contador `respostas_ia` ficam no banco e mudam na mesma transação que grava a mensagem enviada. Mensagem enviada pelo corretor (`fromMe` cujo ID não está entre os IDs que o sistema enviou) leva a HUMANO; o eco de uma mensagem da IA é descartado pelo ID. A IA só envia se o estado for BOT. O contador é por conversa. Devolver a conversa à IA não zera o contador. Após 7 dias sem nenhuma mensagem do cliente nem do corretor, uma nova mensagem do cliente abre uma nova conversa com contador 0, só se o AD-8 ainda considerar o número cliente novo.
+- Rule: estado e contador `respostas_ia` ficam no banco e mudam na mesma transação que grava a mensagem enviada. Mensagem enviada pelo corretor (`fromMe` cujo ID não está entre os IDs que o sistema enviou) leva a HUMANO; o eco de uma mensagem da IA é descartado pelo ID. A IA só envia se o estado for BOT. O contador é por conversa. Devolver a conversa à IA não zera o contador. Após 7 dias sem nenhuma mensagem do cliente nem do corretor, uma nova mensagem do cliente abre uma nova conversa com contador 0, só se o AD-8 ainda considerar o número cliente novo. Conversa em HUMANO nunca reinicia sozinha: a IA só volta quando o corretor devolve.
 
 **AD-5 Fila por conversa, processamento serial, com agrupamento de rajadas.**
 - Binds: ordem das respostas e custo de IA.
@@ -91,7 +91,7 @@ stateDiagram-v2
 - Binds: painel mínimo (QR, prompt, conversas).
 - Prevents: regra de negócio no front; dois pontos de verdade.
 - Rule: o front não acessa o banco nem a Evolution; tudo passa pela API do backend. Login com Google (OIDC) validado no backend, só para o e-mail do corretor configurado; o backend emite um JWT de sessão (HS256, 8 h) e a API só aceita esse JWT. Pastas `backend/` e `frontend/` na raiz.
-- Implementado no módulo `painel`: `POST /api/auth/google` (corpo `{idToken}`, devolve `{token, expiraEm}`; 401 token inválido, 403 outra conta), `GET /api/prompt` e `PUT /api/prompt` (corpo `{base}`, máximo 8000 caracteres). `GET` devolve `base` (editável), `estilo` e `regrasFixas` (somente leitura). Variáveis de ambiente: `GOOGLE_CLIENT_ID`, `BIZU_EMAIL_CORRETOR`, `BIZU_JWT_SEGREDO` (mínimo 32 caracteres; sem ele a aplicação não sobe), `BIZU_PAINEL_ORIGEM` (padrão `http://localhost:3000`). O webhook da Evolution fica fora do JWT e se protege pelo segredo no header.
+- Implementado no módulo `painel`: `POST /api/auth/google` (corpo `{idToken}`, devolve `{token, expiraEm}`; 401 token inválido, 403 outra conta), `GET /api/prompt` e `PUT /api/prompt` (corpo `{base}`, máximo 8000 caracteres). `GET` devolve `base` (editável), `estilo` e `regrasFixas` (somente leitura). Também: `GET /api/conversas` (conversas ativas com a qualificação do cliente), `POST /api/conversas/{id}/assumir` e `/devolver`, `GET /api/whatsapp` (conectado ou QR code) e `POST /api/estilo/gerar` (gera o perfil de estilo; `{gerado}` é false se houver menos de 20 mensagens do corretor). Variáveis de ambiente: `GOOGLE_CLIENT_ID`, `BIZU_EMAIL_CORRETOR`, `BIZU_JWT_SEGREDO` (mínimo 32 caracteres; sem ele a aplicação não sobe), `BIZU_PAINEL_ORIGEM` (padrão `http://localhost:3000`). O webhook da Evolution fica fora do JWT e se protege pelo segredo no header. Além de `messages.upsert`, o webhook trata `contacts.upsert`: cada contato salvo vai para `contato_ignorado` (a IA nunca o atende).
 
 ## Pilha (seed, o código passa a ser dono depois)
 

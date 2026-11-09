@@ -14,9 +14,12 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
@@ -26,6 +29,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 /** Fluxo completo contra um Postgres real (Liquibase aplica o esquema). Ignorado se o Docker não estiver ativo. */
+@ExtendWith(OutputCaptureExtension.class)
 @Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest(
         classes = {BizuApplication.class, FluxoDeConversaIT.Dublês.class},
@@ -46,6 +50,7 @@ class FluxoDeConversaIT {
 
     static final List<String> enviados = new ArrayList<>();
     static RespostaAgente proximaResposta;
+    static RuntimeException falhaDoAgente;
 
     @TestConfiguration
     static class Dublês {
@@ -63,7 +68,12 @@ class FluxoDeConversaIT {
         @Bean
         @Primary
         Agente agenteFalso() {
-            return contexto -> proximaResposta != null ? proximaResposta : new RespostaAgente("Resposta", null, false);
+            return contexto -> {
+                if (falhaDoAgente != null) {
+                    throw falhaDoAgente;
+                }
+                return proximaResposta != null ? proximaResposta : new RespostaAgente("Resposta", null, false);
+            };
         }
     }
 
@@ -80,6 +90,7 @@ class FluxoDeConversaIT {
         jdbc.sql("delete from contato_ignorado").update();
         enviados.clear();
         proximaResposta = null;
+        falhaDoAgente = null;
     }
 
     @Test
@@ -201,6 +212,41 @@ class FluxoDeConversaIT {
         var lead = jdbc.sql("select finalidade, regiao, prazo from lead").query().singleRow();
         assertThat(lead).containsEntry("finalidade", "compra").containsEntry("regiao", "Centro")
                 .containsEntry("prazo", "3 meses");
+    }
+
+    @Test
+    void conversaPassadaAoCorretorNaoVoltaParaAIADepoisDeSeteDias() {
+        proximaResposta = RespostaAgente.passar();
+        service.receberDoCliente(CLIENTE, "Quero falar com o corretor", "WA-1", T0);
+        processador.processarProxima(T0.plusSeconds(1));
+        proximaResposta = null;
+
+        Instant depois = T0.plus(Duration.ofDays(8));
+        assertThat(service.receberDoCliente(CLIENTE, "Alô?", "WA-2", depois)).isEqualTo(Resultado.REGISTRADA);
+
+        assertThat(processador.processarProxima(depois.plusSeconds(1))).isFalse();
+        assertThat(enviados).isEmpty();
+        assertThat(estado(CLIENTE)).isEqualTo("HUMANO");
+    }
+
+    @Test
+    void filaDescartadaDepoisDasTentativasDeixaLogDeErroComAConversa(CapturedOutput saida) {
+        falhaDoAgente = new IllegalStateException("Claude fora do ar");
+        service.receberDoCliente(CLIENTE, "Olá", "WA-1", T0);
+        String conversaId = jdbc.sql("select id from conversa").query(String.class).single();
+
+        Instant t = T0.plusSeconds(1);
+        for (int i = 0; i < 3; i++) {
+            try {
+                processador.processarProxima(t);
+            } catch (ProcessadorDeFila.FalhaNoProcessamento falha) {
+                processador.registrarFalha(falha.conversaId(), t);
+            }
+            t = t.plusSeconds(60);
+        }
+
+        assertThat(jdbc.sql("select count(*) from fila_mensagem").query(Integer.class).single()).isZero();
+        assertThat(saida.getOut()).contains("descartada").contains(conversaId);
     }
 
     private int respostasIa(String telefone) {

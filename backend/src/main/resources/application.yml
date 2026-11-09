@@ -4,7 +4,7 @@ spring:
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/bizu}
     username: ${DB_USER:bizu}
-    password: ${DB_PASSWORD:bizu}
+    password: ${DB_PASSWORD:2222}
   liquibase:
     change-log: classpath:db/changelog/db.changelog-master.yaml
 
@@ -32,6 +32,6 @@ bizu:
     modelo: claude-haiku-5-5
     max-tokens: 4096
   evolution:
-    base-url: ${EVOLUTION_URL:http://localhost:8080}
+    base-url: ${EVOLUTION_URL:http://localhost:8081}
     instancia: ${EVOLUTION_INSTANCIA:bizu}
     api-key: ${EVOLUTION_API_KEY:}
