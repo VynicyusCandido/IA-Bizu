@@ -5,6 +5,7 @@ import app.bizu.conversa.MensagemRepository.Direcao;
 import app.bizu.conversa.MensagemRepository.Origem;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -16,6 +17,12 @@ public class ConversaService {
 
     /** Eco: mensagem que o próprio sistema enviou e voltou do WhatsApp como "do corretor". */
     public enum Resultado { ENFILEIRADA, REGISTRADA, IGNORADA, DUPLICADA, ECO, ASSUMIDA }
+
+    /** Linha do painel: a conversa e o que a IA descobriu do cliente. */
+    public record ConversaResumo(UUID id, String telefone, Estado estado, int respostasIa, Instant ultimaAtividadeEm,
+                                 String finalidade, String regiao, String faixaValor, String prazo,
+                                 String imovelCitado) {
+    }
 
     private static final Duration JANELA_ECO = Duration.ofSeconds(60);
 
@@ -43,7 +50,9 @@ public class ConversaService {
 
         Optional<Conversa> atual = conversas.buscarAtivaParaAtualizar(telefone);
         Conversa conversa;
-        if (atual.isPresent() && !atual.get().expirada(agora, props.reinicioApos())) {
+        // Conversa entregue ao corretor (HUMANO) nunca reinicia sozinha: a IA fica em silêncio até ele devolver.
+        if (atual.isPresent() && (atual.get().estado() == Estado.HUMANO
+                || !atual.get().expirada(agora, props.reinicioApos()))) {
             conversa = atual.get();
         } else {
             atual.ifPresent(velha -> conversas.atualizar(velha.desativada()));
@@ -89,6 +98,34 @@ public class ConversaService {
             conversas.atualizar(conversa.assumida(agora));
         }
         return Resultado.ASSUMIDA;
+    }
+
+    @Transactional(readOnly = true)
+    public List<ConversaResumo> listar() {
+        return conversas.listarResumos();
+    }
+
+    /** O corretor assume pelo painel: a IA para de responder. Vazio se a conversa não existe ou não está ativa. */
+    @Transactional
+    public Optional<Conversa> assumir(UUID id, Instant agora) {
+        return conversas.buscarParaAtualizar(id).filter(Conversa::ativa).map(conversa -> {
+            Conversa assumida = conversa.assumida(agora);
+            conversas.atualizar(assumida);
+            return assumida;
+        });
+    }
+
+    /** O corretor devolve à IA. Só age em conversa assumida; se o limite de respostas já foi atingido, encerra. */
+    @Transactional
+    public Optional<Conversa> devolver(UUID id, Instant agora) {
+        return conversas.buscarParaAtualizar(id).filter(Conversa::ativa).map(conversa -> {
+            if (conversa.estado() != Estado.HUMANO) {
+                return conversa;
+            }
+            Conversa devolvida = conversa.devolvida(props.limiteRespostas(), agora);
+            conversas.atualizar(devolvida);
+            return devolvida;
+        });
     }
 
     /** Marca um número como contato salvo do corretor (a IA nunca o atende). */

@@ -43,6 +43,13 @@ class MensagemRepository {
                 .query(Integer.class).single() > 0;
     }
 
+    /** Esta mensagem do WhatsApp foi enviada pela IA? (para não aprender estilo do que ela mesma escreveu) */
+    boolean existeSaidaIaPorWaId(String waMessageId) {
+        return jdbc.sql("select count(*) from mensagem where wa_message_id = :wa and origem = 'IA'")
+                .param("wa", waMessageId)
+                .query(Integer.class).single() > 0;
+    }
+
     /** A IA enviou exatamente este texto nesta conversa desde o instante dado? (eco ainda sem ID gravado) */
     boolean existeSaidaIaRecente(UUID conversaId, String texto, Instant desde) {
         return jdbc.sql("""

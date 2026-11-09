@@ -3,6 +3,10 @@ package app.bizu.painel;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import app.bizu.BizuApplication;
+import app.bizu.conversa.Conexao;
+import app.bizu.conversa.ConversaService;
+import app.bizu.conversa.ConversaService.Resultado;
+import app.bizu.conversa.HistoricoDoCorretor;
 import app.bizu.conversa.PromptService;
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import java.net.URI;
@@ -11,10 +15,13 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.crypto.spec.SecretKeySpec;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -23,6 +30,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwsHeader;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
@@ -61,14 +69,37 @@ class PainelApiIT {
                 default -> Optional.empty();
             };
         }
+
+        @Bean
+        @Primary
+        Conexao conexaoFalsa() {
+            return () -> new Conexao.Situacao(false, "data:image/png;base64,QR", "ABCD-1234");
+        }
+
+        @Bean
+        @Primary
+        HistoricoDoCorretor historicoFalso() {
+            return maximo -> List.of();
+        }
     }
 
     private static final Pattern TOKEN = Pattern.compile("\"token\"\\s*:\\s*\"([^\"]+)\"");
 
     @Value("${local.server.port}") int porta;
     @Autowired PromptService prompts;
+    @Autowired ConversaService conversas;
+    @Autowired JdbcClient jdbc;
 
     private final HttpClient http = HttpClient.newHttpClient();
+
+    @BeforeEach
+    void limpar() {
+        jdbc.sql("delete from fila_mensagem").update();
+        jdbc.sql("delete from lead").update();
+        jdbc.sql("delete from mensagem").update();
+        jdbc.sql("delete from conversa").update();
+        jdbc.sql("delete from contato_ignorado").update();
+    }
 
     @Test
     void apiExigeSessao() throws Exception {
@@ -125,9 +156,85 @@ class PainelApiIT {
 
     @Test
     void webhookContinuaProtegidoPeloProprioSegredo() throws Exception {
-        assertThat(webhook(null).statusCode()).isEqualTo(401);
-        assertThat(webhook("segredo-errado").statusCode()).isEqualTo(401);
-        assertThat(webhook("teste").statusCode()).isEqualTo(200);
+        String corpo = "{\"event\":\"connection.update\"}";
+        assertThat(webhook(null, corpo).statusCode()).isEqualTo(401);
+        assertThat(webhook("segredo-errado", corpo).statusCode()).isEqualTo(401);
+        assertThat(webhook("teste", corpo).statusCode()).isEqualTo(200);
+    }
+
+    @Test
+    void contatosSalvosVindosDoWebhookNuncaSaoAtendidos() throws Exception {
+        String corpo = "{\"event\":\"contacts.upsert\",\"data\":[{\"remoteJid\":\"5511977776666@s.whatsapp.net\"}]}";
+
+        assertThat(webhook("teste", corpo).statusCode()).isEqualTo(200);
+
+        assertThat(conversas.receberDoCliente("5511977776666", "Oi", "WA-AGENDA-1", Instant.now()))
+                .isEqualTo(Resultado.IGNORADA);
+        assertThat(conversas.receberDoCliente("5511966665555", "Oi", "WA-NOVO-1", Instant.now()))
+                .isEqualTo(Resultado.ENFILEIRADA);
+    }
+
+    @Test
+    void painelDeConversasExigeSessao() throws Exception {
+        assertThat(chamar("GET", "/api/conversas", null, null).statusCode()).isEqualTo(401);
+        assertThat(chamar("POST", "/api/conversas/" + UUID.randomUUID() + "/assumir", null, null).statusCode())
+                .isEqualTo(401);
+        assertThat(chamar("GET", "/api/whatsapp", null, null).statusCode()).isEqualTo(401);
+        assertThat(chamar("POST", "/api/estilo/gerar", null, null).statusCode()).isEqualTo(401);
+    }
+
+    @Test
+    void corretorVeAsConversasComAQualificacaoEAssumeEDevolve() throws Exception {
+        String token = sessao();
+        conversas.receberDoCliente("5511988887777", "Quero comprar", "WA-P-1", Instant.now());
+        jdbc.sql("""
+                insert into lead (conversa_id, finalidade, regiao, faixa_valor, prazo, atualizado_em)
+                select id, 'compra', 'Centro', 'até 500 mil', '3 meses', now() from conversa
+                """).update();
+
+        HttpResponse<String> lista = chamar("GET", "/api/conversas", null, token);
+
+        assertThat(lista.statusCode()).isEqualTo(200);
+        assertThat(lista.body()).contains("5511988887777").contains("BOT").contains("Centro").contains("3 meses");
+        Matcher id = Pattern.compile("\"id\"\s*:\s*\"([^\"]+)\"").matcher(lista.body());
+        assertThat(id.find()).isTrue();
+
+        HttpResponse<String> assumida = chamar("POST", "/api/conversas/" + id.group(1) + "/assumir", null, token);
+        assertThat(assumida.statusCode()).isEqualTo(200);
+        assertThat(assumida.body()).contains("HUMANO");
+        assertThat(conversas.receberDoCliente("5511988887777", "Alô", "WA-P-2", Instant.now()))
+                .isEqualTo(Resultado.REGISTRADA);
+
+        HttpResponse<String> devolvida = chamar("POST", "/api/conversas/" + id.group(1) + "/devolver", null, token);
+        assertThat(devolvida.statusCode()).isEqualTo(200);
+        assertThat(devolvida.body()).contains("BOT");
+        assertThat(conversas.receberDoCliente("5511988887777", "Voltei", "WA-P-3", Instant.now()))
+                .isEqualTo(Resultado.ENFILEIRADA);
+    }
+
+    @Test
+    void assumirConversaQueNaoExisteDa404() throws Exception {
+        assertThat(chamar("POST", "/api/conversas/" + UUID.randomUUID() + "/assumir", null, sessao()).statusCode())
+                .isEqualTo(404);
+        assertThat(chamar("POST", "/api/conversas/nao-e-um-id/devolver", null, sessao()).statusCode())
+                .isEqualTo(400);
+    }
+
+    @Test
+    void painelMostraOQrCodeParaConectarONumero() throws Exception {
+        HttpResponse<String> resposta = chamar("GET", "/api/whatsapp", null, sessao());
+
+        assertThat(resposta.statusCode()).isEqualTo(200);
+        assertThat(resposta.body()).contains("\"conectado\":false").contains("data:image/png;base64,QR")
+                .contains("ABCD-1234");
+    }
+
+    @Test
+    void semMensagensSuficientesOPerfilDeEstiloNaoEGerado() throws Exception {
+        HttpResponse<String> resposta = chamar("POST", "/api/estilo/gerar", null, sessao());
+
+        assertThat(resposta.statusCode()).isEqualTo(200);
+        assertThat(resposta.body()).contains("\"gerado\":false");
     }
 
     private String sessao() throws Exception {
@@ -142,10 +249,10 @@ class PainelApiIT {
         return chamar("POST", "/api/auth/google", "{\"idToken\":\"" + idToken + "\"}", null);
     }
 
-    private HttpResponse<String> webhook(String apikey) throws Exception {
+    private HttpResponse<String> webhook(String apikey, String corpo) throws Exception {
         HttpRequest.Builder req = HttpRequest.newBuilder(URI.create("http://localhost:" + porta + "/webhooks/evolution"))
                 .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString("{\"event\":\"connection.update\"}"));
+                .POST(HttpRequest.BodyPublishers.ofString(corpo));
         if (apikey != null) {
             req.header("apikey", apikey);
         }

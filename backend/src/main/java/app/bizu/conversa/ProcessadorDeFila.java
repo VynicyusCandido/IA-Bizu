@@ -9,6 +9,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ProcessadorDeFila {
 
+    private static final Logger log = LoggerFactory.getLogger(ProcessadorDeFila.class);
     private static final Duration ESPERA_APOS_FALHA = Duration.ofSeconds(30);
 
     /** Falha ao responder uma conversa; carrega o ID para o worker adiar só ela. */
@@ -105,6 +108,10 @@ public class ProcessadorDeFila {
     /** Adia a conversa que falhou; depois do máximo de tentativas a fila dela é descartada. */
     @Transactional
     public void registrarFalha(UUID conversaId, Instant agora) {
-        fila.registrarFalha(conversaId, agora.plus(ESPERA_APOS_FALHA), props.maximoTentativas());
+        int descartadas = fila.registrarFalha(conversaId, agora.plus(ESPERA_APOS_FALHA), props.maximoTentativas());
+        if (descartadas > 0) {
+            log.error("Fila da conversa {} descartada depois de {} falhas: {} mensagem(ns) do cliente ficaram sem resposta",
+                    conversaId, props.maximoTentativas(), descartadas);
+        }
     }
 }

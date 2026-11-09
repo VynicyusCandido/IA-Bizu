@@ -1,13 +1,14 @@
 # Postgres apenas para desenvolvimento local. Credenciais de teste, não usar em produção.
+# O backend roda na máquina (mvn spring-boot:run). A Evolution (WhatsApp) fica em compose.evolution.yaml, opcional.
 services:
   postgres:
     image: postgres:17
     environment:
       POSTGRES_DB: bizu
       POSTGRES_USER: bizu
-      POSTGRES_PASSWORD: bizu
+      POSTGRES_PASSWORD: "2222"
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
 

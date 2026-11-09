@@ -1,6 +1,7 @@
 package app.bizu.conversa;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.RowMapper;
@@ -69,6 +70,30 @@ class ConversaRepository {
                 .param("ativa", c.ativa())
                 .param("ultima", Tempo.sql(c.ultimaAtividadeEm()))
                 .update();
+    }
+
+    /** Conversas ativas, as mais recentes primeiro, com o que a IA já descobriu do cliente. */
+    List<ConversaService.ConversaResumo> listarResumos() {
+        return jdbc.sql("""
+                select c.id, c.telefone, c.estado, c.respostas_ia, c.ultima_atividade_em,
+                       l.finalidade, l.regiao, l.faixa_valor, l.prazo, l.imovel_citado
+                  from conversa c left join lead l on l.conversa_id = c.id
+                 where c.ativa
+                 order by c.ultima_atividade_em desc
+                 limit 200
+                """)
+                .query((rs, n) -> new ConversaService.ConversaResumo(
+                        rs.getObject("id", UUID.class),
+                        rs.getString("telefone"),
+                        Estado.valueOf(rs.getString("estado")),
+                        rs.getInt("respostas_ia"),
+                        Tempo.ler(rs, "ultima_atividade_em"),
+                        rs.getString("finalidade"),
+                        rs.getString("regiao"),
+                        rs.getString("faixa_valor"),
+                        rs.getString("prazo"),
+                        rs.getString("imovel_citado")))
+                .list();
     }
 
     /** Conversa com mensagens prontas na fila (janela de agrupamento vencida), travada sem bloquear outras. */

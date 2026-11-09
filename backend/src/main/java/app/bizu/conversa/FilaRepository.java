@@ -41,8 +41,8 @@ class FilaRepository {
         jdbc.sql("delete from fila_mensagem where id in (:ids)").param("ids", ids).update();
     }
 
-    /** Registra uma falha: adia a conversa e descarta a fila ao passar do máximo de tentativas. */
-    void registrarFalha(UUID conversaId, Instant novaDisponibilidade, int maximoTentativas) {
+    /** Registra uma falha: adia a conversa e descarta a fila ao passar do máximo. Devolve quantas linhas descartou. */
+    int registrarFalha(UUID conversaId, Instant novaDisponibilidade, int maximoTentativas) {
         jdbc.sql("""
                 update fila_mensagem set tentativas = tentativas + 1, disponivel_em = :d
                  where conversa_id = :c
@@ -50,7 +50,7 @@ class FilaRepository {
                 .param("c", conversaId)
                 .param("d", Tempo.sql(novaDisponibilidade))
                 .update();
-        jdbc.sql("delete from fila_mensagem where conversa_id = :c and tentativas >= :max")
+        return jdbc.sql("delete from fila_mensagem where conversa_id = :c and tentativas >= :max")
                 .param("c", conversaId)
                 .param("max", maximoTentativas)
                 .update();

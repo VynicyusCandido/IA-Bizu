@@ -1,11 +1,17 @@
 package app.bizu.conversa;
 
 import java.util.List;
+import java.util.Optional;
 
 /** Porta para o agente de IA. */
 public interface Agente {
 
     RespostaAgente responder(Contexto contexto);
+
+    /** Descreve o jeito do corretor escrever a partir de mensagens dele; vazio quando o agente não gera perfil. */
+    default Optional<String> perfilDeEstilo(List<String> mensagensDoCorretor) {
+        return Optional.empty();
+    }
 
     record Contexto(Conversa conversa, List<Trecho> historico, String promptBase, String promptEstilo) {
     }

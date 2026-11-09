@@ -13,13 +13,16 @@ import com.anthropic.models.messages.TextBlockParam;
 import com.anthropic.models.messages.Tool;
 import com.anthropic.models.messages.ToolResultBlockParam;
 import com.anthropic.models.messages.ToolUseBlock;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -35,11 +38,38 @@ class AgenteClaude implements Agente {
     private static final Logger log = LoggerFactory.getLogger(AgenteClaude.class);
     private static final int MAXIMO_RODADAS = 4;
 
-    private final AnthropicClient cliente = AnthropicOkHttpClient.fromEnv();
+    /** Sem prazo, uma API travada seguraria a conversa travada no banco por minutos. */
+    private static final Duration PRAZO_DA_API = Duration.ofSeconds(30);
+
+    private static final String INSTRUCAO_ESTILO = """
+            Abaixo estão mensagens que um corretor de imóveis escreveu no WhatsApp. Descreva em até 8 linhas o jeito \
+            dele escrever: tom, tamanho das frases, expressões e gírias que repete, como cumprimenta e se despede, \
+            uso de emoji. Não copie nomes, telefones, endereços nem outros dados pessoais. Responda só com a descrição.""";
+
+    private final AnthropicClient cliente;
     private final AgenteProperties props;
 
+    @Autowired
     AgenteClaude(AgenteProperties props) {
+        this(props, AnthropicOkHttpClient.builder().fromEnv().timeout(PRAZO_DA_API).build());
+    }
+
+    AgenteClaude(AgenteProperties props, AnthropicClient cliente) {
         this.props = props;
+        this.cliente = cliente;
+    }
+
+    @Override
+    public Optional<String> perfilDeEstilo(List<String> mensagensDoCorretor) {
+        String lista = mensagensDoCorretor.stream().map(m -> "- " + m).collect(Collectors.joining("\n"));
+        Message resposta = cliente.messages().create(MessageCreateParams.builder()
+                .model(props.modelo())
+                .maxTokens(props.maxTokens())
+                .system(INSTRUCAO_ESTILO)
+                .addUserMessage(lista)
+                .build());
+        String perfil = texto(resposta);
+        return perfil.isBlank() ? Optional.empty() : Optional.of(perfil);
     }
 
     @Override

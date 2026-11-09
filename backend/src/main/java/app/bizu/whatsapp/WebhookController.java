@@ -4,6 +4,9 @@ import app.bizu.conversa.ConversaService;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Clock;
+import java.time.Instant;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -16,6 +19,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/webhooks/evolution")
 class WebhookController {
+
+    private static final Logger log = LoggerFactory.getLogger(WebhookController.class);
 
     private final ConversaService conversas;
     private final Clock relogio;
@@ -34,6 +39,11 @@ class WebhookController {
         if (!autorizado(apikey)) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
+        if (webhook.ehContatos()) {
+            Instant agora = relogio.instant();
+            webhook.telefonesDeContatos().forEach(telefone -> conversas.marcarContatoSalvo(telefone, agora));
+            return ResponseEntity.ok().build();
+        }
         if (!webhook.ehNovaMensagem()) {
             return ResponseEntity.ok().build();
         }
@@ -41,12 +51,14 @@ class WebhookController {
         var telefone = webhook.telefone();
         var texto = webhook.texto();
         if (telefone.isPresent() && texto.isPresent()) {
-            var chave = webhook.data().key();
-            if (chave.fromMe()) {
-                conversas.receberDoCorretor(telefone.get(), texto.get(), chave.id(), relogio.instant());
+            if (webhook.fromMe()) {
+                conversas.receberDoCorretor(telefone.get(), texto.get(), webhook.idMensagem(), relogio.instant());
             } else {
-                conversas.receberDoCliente(telefone.get(), texto.get(), chave.id(), relogio.instant());
+                conversas.receberDoCliente(telefone.get(), texto.get(), webhook.idMensagem(), relogio.instant());
             }
+        } else if (texto.isPresent() && webhook.jid().filter(j -> j.endsWith("@lid")).isPresent()) {
+            // Formato de endereço que o sistema ainda não entende: sem este aviso a mensagem sumiria em silêncio.
+            log.warn("Mensagem descartada: o destino {} não traz telefone (formato @lid)", webhook.jid().get());
         }
         return ResponseEntity.ok().build();
     }
