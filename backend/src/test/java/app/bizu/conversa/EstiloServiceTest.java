@@ -44,32 +44,32 @@ class EstiloServiceTest {
 
     @Test
     void poucasMensagensNaoGeramPerfilEOTomFormalContinua() {
-        when(historico.mensagensEnviadas(anyInt())).thenReturn(mensagens(EstiloService.MINIMO_MENSAGENS - 1));
+        when(historico.mensagensEnviadas(anyString(), anyInt())).thenReturn(mensagens(EstiloService.MINIMO_MENSAGENS - 1));
 
-        assertThat(estilo.gerar(AGORA)).isFalse();
+        assertThat(estilo.gerar("c1", AGORA)).isFalse();
 
         verify(agente, never()).perfilDeEstilo(anyList());
-        verify(prompts, never()).salvarEstilo(anyString(), any());
+        verify(prompts, never()).salvarEstilo(anyString(), anyString(), any());
     }
 
     @Test
     void geraESalvaOPerfilQuandoHaMensagensSuficientes() {
-        when(historico.mensagensEnviadas(anyInt())).thenReturn(mensagens(EstiloService.MINIMO_MENSAGENS));
+        when(historico.mensagensEnviadas(anyString(), anyInt())).thenReturn(mensagens(EstiloService.MINIMO_MENSAGENS));
         when(agente.perfilDeEstilo(anyList())).thenReturn(Optional.of("Tom informal e direto."));
 
-        assertThat(estilo.gerar(AGORA)).isTrue();
+        assertThat(estilo.gerar("c1", AGORA)).isTrue();
 
-        verify(prompts).salvarEstilo("Tom informal e direto.", AGORA);
+        verify(prompts).salvarEstilo("c1", "Tom informal e direto.", AGORA);
     }
 
     @Test
     void mensagensQueAPropriaIAEnviouNaoEntramNoPerfil() {
-        when(historico.mensagensEnviadas(anyInt())).thenReturn(mensagens(EstiloService.MINIMO_MENSAGENS + 5));
+        when(historico.mensagensEnviadas(anyString(), anyInt())).thenReturn(mensagens(EstiloService.MINIMO_MENSAGENS + 5));
         when(mensagens.existeSaidaIaPorWaId("ID-1")).thenReturn(true);
         when(mensagens.existeSaidaIaPorWaId("ID-2")).thenReturn(true);
         when(agente.perfilDeEstilo(anyList())).thenReturn(Optional.of("Perfil"));
 
-        estilo.gerar(AGORA);
+        estilo.gerar("c1", AGORA);
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<String>> enviadas = ArgumentCaptor.forClass(List.class);
@@ -80,10 +80,10 @@ class EstiloServiceTest {
 
     @Test
     void ficarAbaixoDoMinimoDepoisDeTirarAsDaIANaoGeraPerfil() {
-        when(historico.mensagensEnviadas(anyInt())).thenReturn(mensagens(EstiloService.MINIMO_MENSAGENS));
+        when(historico.mensagensEnviadas(anyString(), anyInt())).thenReturn(mensagens(EstiloService.MINIMO_MENSAGENS));
         when(mensagens.existeSaidaIaPorWaId("ID-1")).thenReturn(true);
 
-        assertThat(estilo.gerar(AGORA)).isFalse();
+        assertThat(estilo.gerar("c1", AGORA)).isFalse();
     }
 
     @Test
@@ -91,10 +91,10 @@ class EstiloServiceTest {
         var lista = new java.util.ArrayList<>(mensagens(EstiloService.MINIMO_MENSAGENS));
         lista.add(new MensagemEnviada("X", "a".repeat(5000)));
         lista.add(new MensagemEnviada("Y", "   "));
-        when(historico.mensagensEnviadas(anyInt())).thenReturn(lista);
+        when(historico.mensagensEnviadas(anyString(), anyInt())).thenReturn(lista);
         when(agente.perfilDeEstilo(anyList())).thenReturn(Optional.of("Perfil"));
 
-        estilo.gerar(AGORA);
+        estilo.gerar("c1", AGORA);
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<String>> enviadas = ArgumentCaptor.forClass(List.class);
@@ -105,11 +105,11 @@ class EstiloServiceTest {
 
     @Test
     void agenteSemPerfilNaoSalvaNada() {
-        when(historico.mensagensEnviadas(anyInt())).thenReturn(mensagens(EstiloService.MINIMO_MENSAGENS));
+        when(historico.mensagensEnviadas(anyString(), anyInt())).thenReturn(mensagens(EstiloService.MINIMO_MENSAGENS));
         when(agente.perfilDeEstilo(anyList())).thenReturn(Optional.empty());
 
-        assertThat(estilo.gerar(AGORA)).isFalse();
+        assertThat(estilo.gerar("c1", AGORA)).isFalse();
 
-        verify(prompts, never()).salvarEstilo(anyString(), any());
+        verify(prompts, never()).salvarEstilo(anyString(), anyString(), any());
     }
 }

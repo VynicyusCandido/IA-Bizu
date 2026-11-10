@@ -4,11 +4,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useSyncExternalStore } from "react";
 import { AlternarTema } from "@/components/painel/alternar-tema";
+import { AvisoDeAssinatura } from "@/components/painel/aviso-de-assinatura";
 import { EstadoWhatsapp } from "@/components/painel/estado-whatsapp";
 import { Logo } from "@/components/painel/logo";
 import { MenuDoUsuario } from "@/components/painel/menu-do-usuario";
 import { NavegacaoInferior, NavegacaoLateral } from "@/components/painel/navegacao";
-import { emailDaSessao, lerSessao } from "@/lib/sessao";
+import { lerSessao } from "@/lib/sessao";
 
 /** Área logada: sem sessão válida volta ao login. */
 export default function LayoutDoPainel({ children }: { children: React.ReactNode }) {
@@ -25,7 +26,6 @@ export default function LayoutDoPainel({ children }: { children: React.ReactNode
   }, [token, router]);
 
   if (!token) return null;
-  const email = emailDaSessao({ token, expiraEm: "" });
 
   return (
     <div className="flex h-dvh">
@@ -49,9 +49,10 @@ export default function LayoutDoPainel({ children }: { children: React.ReactNode
           <div className="flex items-center gap-1">
             <EstadoWhatsapp className="md:hidden" />
             <AlternarTema />
-            <MenuDoUsuario email={email} />
+            <MenuDoUsuario />
           </div>
         </header>
+        <AvisoDeAssinatura />
         <main className="min-h-0 flex-1">{children}</main>
         <NavegacaoInferior />
       </div>

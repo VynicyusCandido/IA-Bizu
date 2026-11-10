@@ -11,7 +11,7 @@ import tools.jackson.databind.JsonNode;
  * muda de forma conforme o evento: objeto em messages.upsert, lista em contacts.upsert.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-record EvolutionWebhook(String event, JsonNode data) {
+record EvolutionWebhook(String event, String instance, JsonNode data) {
 
     private static final String INDIVIDUAL = "@s.whatsapp.net";
 

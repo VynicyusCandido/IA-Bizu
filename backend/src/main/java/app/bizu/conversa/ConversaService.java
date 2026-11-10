@@ -50,12 +50,13 @@ public class ConversaService {
 
     /** Mensagem de texto recebida de um cliente. */
     @Transactional
-    public Resultado receberDoCliente(String telefone, String texto, String waMessageId, Instant agora) {
-        if (contatos.existe(telefone)) {
+    public Resultado receberDoCliente(String corretorId, String telefone, String texto, String waMessageId,
+                                      Instant agora) {
+        if (contatos.existe(corretorId, telefone)) {
             return Resultado.IGNORADA;
         }
 
-        Optional<Conversa> atual = conversas.buscarAtivaParaAtualizar(telefone);
+        Optional<Conversa> atual = conversas.buscarAtivaParaAtualizar(corretorId, telefone);
         Conversa conversa;
         // Conversa entregue ao corretor (HUMANO) nunca reinicia sozinha: a IA fica em silêncio até ele devolver.
         if (atual.isPresent() && (atual.get().estado() == Estado.HUMANO
@@ -63,7 +64,7 @@ public class ConversaService {
             conversa = atual.get();
         } else {
             atual.ifPresent(velha -> conversas.atualizar(velha.desativada()));
-            conversa = Conversa.nova(telefone, agora);
+            conversa = Conversa.nova(corretorId, telefone, agora);
             conversas.inserir(conversa);
         }
 
@@ -85,9 +86,10 @@ public class ConversaService {
      * corretor assumiu: a conversa vai a HUMANO e o número nunca mais é atendido pela IA.
      */
     @Transactional
-    public Resultado receberDoCorretor(String telefone, String texto, String waMessageId, Instant agora) {
+    public Resultado receberDoCorretor(String corretorId, String telefone, String texto, String waMessageId,
+                                       Instant agora) {
         // Trava a conversa: se a IA está enviando agora, espera o commit para o ID da resposta já estar gravado.
-        Optional<Conversa> ativa = conversas.buscarAtivaParaAtualizar(telefone);
+        Optional<Conversa> ativa = conversas.buscarAtivaParaAtualizar(corretorId, telefone);
 
         if (waMessageId != null && mensagens.existePorWaId(waMessageId)) {
             return Resultado.ECO;
@@ -97,7 +99,7 @@ public class ConversaService {
             return Resultado.ECO;
         }
 
-        contatos.marcar(telefone, Motivo.ESCRITA_MANUAL, agora);
+        contatos.marcar(corretorId, telefone, Motivo.ESCRITA_MANUAL, agora);
         if (ativa.isPresent()) {
             Conversa conversa = ativa.get();
             mensagens.inserir(UUID.randomUUID(), conversa.id(), Direcao.SAIDA, Origem.CORRETOR, texto,
@@ -108,20 +110,20 @@ public class ConversaService {
     }
 
     @Transactional(readOnly = true)
-    public List<ConversaResumo> listar() {
-        return conversas.listarResumos();
+    public List<ConversaResumo> listar(String corretorId) {
+        return conversas.listarResumos(corretorId);
     }
 
     /** Histórico da conversa; vazio se ela não existe. */
     @Transactional(readOnly = true)
-    public Optional<List<MensagemDaConversa>> mensagens(UUID id) {
-        return conversas.buscar(id).map(c -> mensagens.listar(id));
+    public Optional<List<MensagemDaConversa>> mensagens(String corretorId, UUID id) {
+        return conversas.buscar(corretorId, id).map(c -> mensagens.listar(id));
     }
 
-    /** O corretor assume pelo painel: a IA para de responder. Vazio se a conversa não existe ou não está ativa. */
+    /** O corretor assume pelo painel: a IA para de responder. Vazio se a conversa não existe, não é dele ou não está ativa. */
     @Transactional
-    public Optional<Conversa> assumir(UUID id, Instant agora) {
-        return conversas.buscarParaAtualizar(id).filter(Conversa::ativa).map(conversa -> {
+    public Optional<Conversa> assumir(String corretorId, UUID id, Instant agora) {
+        return conversas.buscarParaAtualizar(corretorId, id).filter(Conversa::ativa).map(conversa -> {
             Conversa assumida = conversa.assumida(agora);
             conversas.atualizar(assumida);
             return assumida;
@@ -130,8 +132,8 @@ public class ConversaService {
 
     /** O corretor devolve à IA. Só age em conversa assumida; se o limite de respostas já foi atingido, encerra. */
     @Transactional
-    public Optional<Conversa> devolver(UUID id, Instant agora) {
-        return conversas.buscarParaAtualizar(id).filter(Conversa::ativa).map(conversa -> {
+    public Optional<Conversa> devolver(String corretorId, UUID id, Instant agora) {
+        return conversas.buscarParaAtualizar(corretorId, id).filter(Conversa::ativa).map(conversa -> {
             if (conversa.estado() != Estado.HUMANO) {
                 return conversa;
             }
@@ -141,9 +143,9 @@ public class ConversaService {
         });
     }
 
-    /** Marca um número como contato salvo do corretor (a IA nunca o atende). */
+    /** Marca números como contatos salvos do corretor (a IA nunca os atende), todos numa só transação. */
     @Transactional
-    public void marcarContatoSalvo(String telefone, Instant agora) {
-        contatos.marcar(telefone, Motivo.AGENDA, agora);
+    public void marcarContatosSalvos(String corretorId, List<String> telefones, Instant agora) {
+        telefones.forEach(telefone -> contatos.marcar(corretorId, telefone, Motivo.AGENDA, agora));
     }
 }

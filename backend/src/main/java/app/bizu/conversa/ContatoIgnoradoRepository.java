@@ -15,17 +15,19 @@ class ContatoIgnoradoRepository {
         this.jdbc = jdbc;
     }
 
-    boolean existe(String telefone) {
-        return jdbc.sql("select count(*) from contato_ignorado where telefone = :t")
+    boolean existe(String corretorId, String telefone) {
+        return jdbc.sql("select count(*) from contato_ignorado where corretor_id = :c and telefone = :t")
+                .param("c", corretorId)
                 .param("t", telefone)
                 .query(Integer.class).single() > 0;
     }
 
-    void marcar(String telefone, Motivo motivo, Instant agora) {
+    void marcar(String corretorId, String telefone, Motivo motivo, Instant agora) {
         jdbc.sql("""
-                insert into contato_ignorado (telefone, motivo, criado_em) values (:t, :m, :agora)
+                insert into contato_ignorado (corretor_id, telefone, motivo, criado_em) values (:c, :t, :m, :agora)
                 on conflict do nothing
                 """)
+                .param("c", corretorId)
                 .param("t", telefone)
                 .param("m", motivo.name())
                 .param("agora", Tempo.sql(agora))

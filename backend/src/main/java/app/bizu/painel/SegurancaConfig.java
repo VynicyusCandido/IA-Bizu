@@ -1,10 +1,10 @@
 package app.bizu.painel;
 
-import com.nimbusds.jose.jwk.source.ImmutableSecret;
-import java.nio.charset.StandardCharsets;
+import app.bizu.corretor.Corretor;
+import app.bizu.corretor.CorretorService;
+import com.nimbusds.jose.jwk.JWKSet;
+import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
 import java.util.List;
-import javax.crypto.SecretKey;
-import javax.crypto.spec.SecretKeySpec;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -13,8 +13,9 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
+import org.springframework.security.oauth2.core.OAuth2Error;
 import org.springframework.security.oauth2.core.OAuth2TokenValidator;
-import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.core.OAuth2TokenValidatorResult;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
@@ -28,23 +29,13 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 /**
  * API sem sessão de servidor: tudo em /api exige o JWT emitido por este backend após o login com Google.
- * O webhook da Evolution e o login ficam abertos aqui, mas o webhook se protege com o segredo no header.
+ * O webhook da Evolution, o login, a chave pública e a saúde ficam abertos aqui; o webhook se protege com o
+ * segredo no header.
  */
 @Configuration
 class SegurancaConfig {
 
     static final String EMISSOR = "bizu";
-
-    private final SecretKey chave;
-
-    SegurancaConfig(PainelProperties props) {
-        String segredo = props.jwtSegredo();
-        if (segredo == null || segredo.getBytes(StandardCharsets.UTF_8).length < 32) {
-            throw new IllegalStateException(
-                    "Defina BIZU_JWT_SEGREDO com pelo menos 32 caracteres para assinar a sessão do painel");
-        }
-        this.chave = new SecretKeySpec(segredo.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
-    }
 
     @Bean
     SecurityFilterChain filtros(HttpSecurity http, JwtDecoder decodificador) throws Exception {
@@ -54,25 +45,30 @@ class SegurancaConfig {
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(a -> a
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers("/webhooks/**", "/api/auth/**", "/error").permitAll()
+                        .requestMatchers("/webhooks/**", "/api/auth/**", "/error",
+                                "/.well-known/jwks.json", "/actuator/health").permitAll()
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().denyAll())
                 .oauth2ResourceServer(o -> o.jwt(j -> j.decoder(decodificador)));
         return http.build();
     }
 
+    /** Verifica só com a chave pública (RS256): um token assinado de outro jeito, como HS256, é recusado. */
     @Bean
-    JwtDecoder decodificadorDaSessao() {
-        NimbusJwtDecoder decoder = NimbusJwtDecoder.withSecretKey(chave).macAlgorithm(MacAlgorithm.HS256).build();
-        OAuth2TokenValidator<Jwt> validadores = new DelegatingOAuth2TokenValidator<>(
-                JwtValidators.createDefaultWithIssuer(EMISSOR));
-        decoder.setJwtValidator(validadores);
+    JwtDecoder decodificadorDaSessao(ChavesDaSessao chaves, CorretorService corretores) throws Exception {
+        NimbusJwtDecoder decoder = NimbusJwtDecoder.withPublicKey(chaves.publica()).build();
+        // Confere a conta a cada requisição: corretor desligado perde o acesso na hora, sem esperar o token vencer.
+        OAuth2TokenValidator<Jwt> contaAtiva = jwt -> corretores.buscar(jwt.getSubject()).filter(Corretor::ativo).isPresent()
+                ? OAuth2TokenValidatorResult.success()
+                : OAuth2TokenValidatorResult.failure(new OAuth2Error("invalid_token", "Conta inativa", null));
+        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
+                JwtValidators.createDefaultWithIssuer(EMISSOR), contaAtiva));
         return decoder;
     }
 
     @Bean
-    JwtEncoder codificadorDaSessao() {
-        return new NimbusJwtEncoder(new ImmutableSecret<>(chave));
+    JwtEncoder codificadorDaSessao(ChavesDaSessao chaves) {
+        return new NimbusJwtEncoder(new ImmutableJWKSet<>(new JWKSet(chaves.chave())));
     }
 
     /** O nome do bean importa: é por ele que o Spring Security acha esta configuração de CORS. */

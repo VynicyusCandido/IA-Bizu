@@ -12,11 +12,13 @@ class PromptRepository {
         this.jdbc = jdbc;
     }
 
-    void salvar(String chave, String conteudo, java.time.Instant agora) {
+    void salvar(String corretorId, String chave, String conteudo, java.time.Instant agora) {
         jdbc.sql("""
-                insert into prompt_agente (chave, conteudo, atualizado_em) values (:k, :c, :agora)
-                on conflict (chave) do update set conteudo = excluded.conteudo, atualizado_em = excluded.atualizado_em
+                insert into prompt_agente (corretor_id, chave, conteudo, atualizado_em) values (:corretor, :k, :c, :agora)
+                on conflict (corretor_id, chave)
+                do update set conteudo = excluded.conteudo, atualizado_em = excluded.atualizado_em
                 """)
+                .param("corretor", corretorId)
                 .param("k", chave)
                 .param("c", conteudo)
                 .param("agora", Tempo.sql(agora))
@@ -24,8 +26,9 @@ class PromptRepository {
     }
 
     /** Conteúdo do prompt da chave (BASE ou ESTILO), ou null se ainda não existe. */
-    String conteudo(String chave) {
-        return jdbc.sql("select conteudo from prompt_agente where chave = :k")
+    String conteudo(String corretorId, String chave) {
+        return jdbc.sql("select conteudo from prompt_agente where corretor_id = :c and chave = :k")
+                .param("c", corretorId)
                 .param("k", chave)
                 .query(String.class).optional().orElse(null);
     }

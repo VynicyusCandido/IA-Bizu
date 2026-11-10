@@ -2,6 +2,8 @@ package app.bizu.painel;
 
 import app.bizu.conversa.EstiloService;
 import java.time.Clock;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -23,7 +25,7 @@ class EstiloController {
     }
 
     @PostMapping("/gerar")
-    Resultado gerar() {
-        return new Resultado(estilo.gerar(relogio.instant()));
+    Resultado gerar(@AuthenticationPrincipal Jwt sessao) {
+        return new Resultado(estilo.gerar(sessao.getSubject(), relogio.instant()));
     }
 }

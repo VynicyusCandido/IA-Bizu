@@ -5,6 +5,8 @@ import app.bizu.conversa.PromptService;
 import java.time.Clock;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -33,20 +35,20 @@ class PromptController {
     }
 
     @GetMapping
-    Prompt obter() {
-        return atual();
+    Prompt obter(@AuthenticationPrincipal Jwt sessao) {
+        return atual(sessao.getSubject());
     }
 
     @PutMapping
-    ResponseEntity<Prompt> salvar(@RequestBody PedidoPrompt pedido) {
+    ResponseEntity<Prompt> salvar(@AuthenticationPrincipal Jwt sessao, @RequestBody PedidoPrompt pedido) {
         if (pedido.base() == null || pedido.base().length() > TAMANHO_MAXIMO) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
         }
-        prompts.salvarBase(pedido.base(), relogio.instant());
-        return ResponseEntity.ok(atual());
+        prompts.salvarBase(sessao.getSubject(), pedido.base(), relogio.instant());
+        return ResponseEntity.ok(atual(sessao.getSubject()));
     }
 
-    private Prompt atual() {
-        return new Prompt(prompts.base(), prompts.estilo(), RegrasDoAgente.texto());
+    private Prompt atual(String corretorId) {
+        return new Prompt(prompts.base(corretorId), prompts.estilo(corretorId), RegrasDoAgente.texto());
     }
 }

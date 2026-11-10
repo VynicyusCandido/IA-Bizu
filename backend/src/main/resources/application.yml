@@ -9,6 +9,21 @@ spring:
     password: ${DB_PASSWORD:}
   liquibase:
     change-log: classpath:db/changelog/db.changelog-master.yaml
+  # O servidor SMTP não é definido aqui de propósito: sem SPRING_MAIL_HOST o sistema não envia e-mail e só registra
+  # no log. Para enviar: SPRING_MAIL_HOST, SPRING_MAIL_PORT, SPRING_MAIL_USERNAME, SPRING_MAIL_PASSWORD.
+  mail:
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.starttls.enable: true
+      mail.smtp.connectiontimeout: 5000
+      mail.smtp.timeout: 5000
+      mail.smtp.writetimeout: 5000
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
 
 bizu:
   # Segredo que a Evolution envia no header "apikey" do webhook. Vazio = webhook recusa tudo.
@@ -19,12 +34,22 @@ bizu:
     janela-agrupamento: 4s
     sondagem-fila: 1s
     maximo-tentativas: 3
+    # Conversas respondidas ao mesmo tempo (cada uma espera a IA sem travar as outras).
+    trabalhadores: 4
+  corretor:
+    # Teto de respostas da IA por corretor por mês; cada corretor pode ter o seu (coluna limite_respostas_mes).
+    limite-mensal-respostas: 3000
+  email:
+    # Quem recebe os avisos do sistema (conta nova esperando liberação). Vazio = só registra no log.
+    dono: ${BIZU_EMAIL_DONO:}
+    remetente: ${BIZU_EMAIL_REMETENTE:}
   painel:
-    # Login do painel: ID token do Google, só para o e-mail do corretor, e sessão em JWT do próprio Bizu.
-    # Tudo vem de variáveis de ambiente; o segredo precisa ter ao menos 32 caracteres.
+    # Login do painel: ID token do Google e sessão em JWT do próprio Bizu, assinado com um par de chaves RSA.
+    # Só este backend tem a chave privada (arquivo PEM PKCS8); outros serviços verificam pela chave pública em
+    # /.well-known/jwks.json. Em dev e nos testes, jwt-chave-efemera gera um par novo a cada partida.
     google-client-id: ${GOOGLE_CLIENT_ID:}
-    email-corretor: ${BIZU_EMAIL_CORRETOR:}
-    jwt-segredo: ${BIZU_JWT_SEGREDO:}
+    jwt-chave-arquivo: ${BIZU_JWT_CHAVE_ARQUIVO:}
+    jwt-chave-efemera: false
     jwt-validade: 8h
     origem-permitida: ${BIZU_PAINEL_ORIGEM:http://localhost:3000}
   agente:
@@ -35,5 +60,8 @@ bizu:
     max-tokens: 4096
   evolution:
     base-url: ${EVOLUTION_URL:http://localhost:8081}
+    # Prefixo do nome da instância de cada corretor (prefixo-authId).
     instancia: ${EVOLUTION_INSTANCIA:bizu}
     api-key: ${EVOLUTION_API_KEY:}
+    # Endereço do webhook deste backend, visto de dentro do contêiner da Evolution.
+    webhook-url: ${BIZU_WEBHOOK_URL:http://host.docker.internal:8080/webhooks/evolution}

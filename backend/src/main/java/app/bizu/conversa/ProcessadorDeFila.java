@@ -4,6 +4,8 @@ import app.bizu.conversa.Agente.Contexto;
 import app.bizu.conversa.Agente.RespostaAgente;
 import app.bizu.conversa.MensagemRepository.Direcao;
 import app.bizu.conversa.MensagemRepository.Origem;
+import app.bizu.corretor.CorretorService;
+import app.bizu.corretor.MotivoDaPausa;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -47,11 +49,13 @@ public class ProcessadorDeFila {
     private final Canal canal;
     private final ConversaProperties props;
     private final TransactionTemplate transacao;
+    private final CorretorService corretores;
 
     ProcessadorDeFila(ConversaRepository conversas, MensagemRepository mensagens, FilaRepository fila,
                       LeadRepository leads, PromptRepository prompts, Agente agente, Canal canal,
-                      ConversaProperties props, TransactionTemplate transacao) {
+                      ConversaProperties props, TransactionTemplate transacao, CorretorService corretores) {
         this.transacao = transacao;
+        this.corretores = corretores;
         this.conversas = conversas;
         this.mensagens = mensagens;
         this.fila = fila;
@@ -63,7 +67,7 @@ public class ProcessadorDeFila {
     }
 
     /** O que o passo 1 separou para a IA; {@code contexto} é nulo quando não há nada a responder. */
-    private record Pedido(UUID conversaId, List<Long> filaIds, Contexto contexto) {
+    private record Pedido(UUID conversaId, String corretorId, List<Long> filaIds, Contexto contexto) {
     }
 
     /**
@@ -101,18 +105,30 @@ public class ProcessadorDeFila {
         // Corretor assumiu ou limite atingido entre o enfileiramento e agora: nada a responder.
         if (!conversa.podeResponder(props.limiteRespostas())) {
             fila.remover(filaIds);
-            return Optional.of(new Pedido(conversaId, filaIds, null));
+            return Optional.of(new Pedido(conversaId, conversa.corretorId(), filaIds, null));
+        }
+
+        // Conta desligada, assinatura vencida além da carência ou teto do mês atingido: a IA fica parada. A conversa
+        // não muda de estado, as mensagens do cliente continuam gravadas e a IA volta a responder quando o cliente
+        // escrever de novo depois de resolvido. Com vários trabalhadores o teto pode passar por poucas respostas
+        // (as que já estavam em andamento).
+        Optional<MotivoDaPausa> pausa = corretores.motivoDaPausa(conversa.corretorId(), agora);
+        if (pausa.isPresent()) {
+            log.info("IA pausada para o corretor {} ({}): a conversa {} fica sem resposta automática",
+                    conversa.corretorId(), pausa.get(), conversaId);
+            fila.remover(filaIds);
+            return Optional.of(new Pedido(conversaId, conversa.corretorId(), filaIds, null));
         }
 
         // Reserva: some da fila de "prontas" enquanto a IA responde. Se o processo cair, volta sozinha.
         fila.adiar(conversaId, agora.plus(RESERVA));
         Contexto contexto = new Contexto(conversa, mensagens.historico(conversaId),
-                prompts.conteudo("BASE"), prompts.conteudo("ESTILO"));
-        return Optional.of(new Pedido(conversaId, filaIds, contexto));
+                prompts.conteudo(conversa.corretorId(), "BASE"), prompts.conteudo(conversa.corretorId(), "ESTILO"));
+        return Optional.of(new Pedido(conversaId, conversa.corretorId(), filaIds, contexto));
     }
 
     private void concluir(Pedido pedido, RespostaAgente resposta, Instant agora) {
-        Conversa conversa = conversas.buscarParaAtualizar(pedido.conversaId()).orElseThrow();
+        Conversa conversa = conversas.buscarParaAtualizar(pedido.corretorId(), pedido.conversaId()).orElseThrow();
 
         if (resposta.qualificacao() != null && !resposta.qualificacao().vazia()) {
             leads.salvar(pedido.conversaId(), resposta.qualificacao(), agora);
@@ -131,9 +147,10 @@ public class ProcessadorDeFila {
             return;
         }
 
-        String waId = canal.enviar(conversa.telefone(), resposta.texto());
+        String waId = canal.enviar(conversa.corretorId(), conversa.telefone(), resposta.texto());
         mensagens.inserir(UUID.randomUUID(), conversa.id(), Direcao.SAIDA, Origem.IA, resposta.texto(), waId, agora);
         conversas.atualizar(conversa.aposRespostaIa(props.limiteRespostas(), agora));
+        corretores.contarRespostaDaIa(conversa.corretorId(), agora);
     }
 
     /** Adia a conversa que falhou; depois do máximo de tentativas a fila dela é descartada. */

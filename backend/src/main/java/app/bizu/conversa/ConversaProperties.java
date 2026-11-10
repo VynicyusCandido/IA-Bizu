@@ -9,5 +9,6 @@ public record ConversaProperties(
         Duration reinicioApos,
         Duration janelaAgrupamento,
         Duration sondagemFila,
-        int maximoTentativas) {
+        int maximoTentativas,
+        int trabalhadores) {
 }

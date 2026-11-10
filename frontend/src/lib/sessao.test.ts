@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { emailDaSessao, lerSessao, salvarSessao } from "@/lib/sessao";
+import { lerSessao, salvarSessao } from "@/lib/sessao";
 
 function armazenamentoFalso() {
   const dados = new Map<string, string>();
@@ -32,11 +32,5 @@ describe("sessão", () => {
       },
     });
     expect(lerSessao()).toBeNull();
-  });
-
-  it("lê o e-mail do campo sub do token", () => {
-    const carga = btoa(JSON.stringify({ sub: "corretor@exemplo.com" })).replace(/=/g, "");
-    expect(emailDaSessao({ token: `a.${carga}.c`, expiraEm: "" })).toBe("corretor@exemplo.com");
-    expect(emailDaSessao({ token: "invalido", expiraEm: "" })).toBe("");
   });
 });

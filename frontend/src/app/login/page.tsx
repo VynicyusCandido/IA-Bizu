@@ -3,7 +3,7 @@
 import Script from "next/script";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { TriangleAlert } from "lucide-react";
+import { Clock, TriangleAlert } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Logo } from "@/components/painel/logo";
@@ -26,7 +26,7 @@ declare global {
 const CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? "";
 
 const MENSAGENS: Record<number, string> = {
-  403: "Esta conta Google não tem acesso ao Bizu.",
+  403: "Esta conta não pode entrar no Bizu.",
   0: "Não consegui falar com o servidor. Confira a conexão e tente de novo.",
 };
 
@@ -34,6 +34,7 @@ export default function Login() {
   const router = useRouter();
   const botao = useRef<HTMLDivElement>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [aguardando, setAguardando] = useState(false);
 
   useEffect(() => {
     if (lerSessao()) router.replace("/conversas");
@@ -45,8 +46,10 @@ export default function Login() {
       client_id: CLIENT_ID,
       callback: async ({ credential }) => {
         setErro(null);
+        setAguardando(false);
         const resultado = await entrarComGoogle(credential);
         if (resultado.ok) router.replace("/conversas");
+        else if (resultado.motivo === "AGUARDANDO_LIBERACAO") setAguardando(true);
         else setErro(MENSAGENS[resultado.status] ?? "Não foi possível entrar. Tente de novo.");
       },
     });
@@ -79,6 +82,15 @@ export default function Login() {
               <AlertDescription>Defina NEXT_PUBLIC_GOOGLE_CLIENT_ID no arquivo .env.local.</AlertDescription>
             </Alert>
           )}
+          {aguardando && (
+            <Alert>
+              <Clock />
+              <AlertTitle>Conta aguardando liberação</AlertTitle>
+              <AlertDescription>
+                Sua conta foi criada, mas ainda não foi liberada. Quando o acesso for liberado, é só entrar de novo.
+              </AlertDescription>
+            </Alert>
+          )}
           {erro && (
             <Alert variant="destructive">
               <TriangleAlert />
@@ -86,7 +98,7 @@ export default function Login() {
             </Alert>
           )}
           <p className="text-center text-xs text-muted-foreground">
-            Só a conta do corretor cadastrado consegue entrar.
+            Entre com a sua conta Google. O acesso é liberado por convite.
           </p>
         </CardContent>
       </Card>

@@ -5,7 +5,7 @@ import useSWR from "swr";
 import { ErroComRetentativa } from "@/components/painel/erro-com-retentativa";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { buscar, type SituacaoWhatsapp } from "@/lib/api";
+import { conectarWhatsapp, type SituacaoWhatsapp } from "@/lib/api";
 
 const PASSOS = [
   "Abra o WhatsApp no celular.",
@@ -14,7 +14,8 @@ const PASSOS = [
 ];
 
 export default function Conexao() {
-  const { data, error, mutate } = useSWR<SituacaoWhatsapp>("/api/whatsapp", buscar, { refreshInterval: 3000 });
+  // POST de propósito: cria a instância na primeira vez e pede o QR. A barra do painel só consulta (GET).
+  const { data, error, mutate } = useSWR<SituacaoWhatsapp>("conectar-whatsapp", conectarWhatsapp, { refreshInterval: 5000 });
 
   return (
     <div className="h-full overflow-y-auto">

@@ -15,24 +15,24 @@ public class PromptService {
     }
 
     /** Prompt que o corretor escreve; texto vazio significa usar o prompt padrão do agente. */
-    public String base() {
-        String base = prompts.conteudo("BASE");
+    public String base(String corretorId) {
+        String base = prompts.conteudo(corretorId, "BASE");
         return base == null ? "" : base;
     }
 
     /** Perfil de estilo gerado das conversas do corretor, ou texto vazio se ainda não existe. */
-    public String estilo() {
-        String estilo = prompts.conteudo("ESTILO");
+    public String estilo(String corretorId) {
+        String estilo = prompts.conteudo(corretorId, "ESTILO");
         return estilo == null ? "" : estilo;
     }
 
     @Transactional
-    public void salvarEstilo(String conteudo, Instant agora) {
-        prompts.salvar("ESTILO", conteudo, agora);
+    public void salvarEstilo(String corretorId, String conteudo, Instant agora) {
+        prompts.salvar(corretorId, "ESTILO", conteudo, agora);
     }
 
     @Transactional
-    public void salvarBase(String conteudo, Instant agora) {
-        prompts.salvar("BASE", conteudo, agora);
+    public void salvarBase(String corretorId, String conteudo, Instant agora) {
+        prompts.salvar(corretorId, "BASE", conteudo, agora);
     }
 }

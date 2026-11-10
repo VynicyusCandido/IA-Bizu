@@ -13,6 +13,7 @@ class ConversaRepository {
 
     private static final RowMapper<Conversa> MAPPER = (rs, n) -> new Conversa(
             rs.getObject("id", UUID.class),
+            rs.getString("corretor_id"),
             rs.getString("telefone"),
             Estado.valueOf(rs.getString("estado")),
             rs.getInt("respostas_ia"),
@@ -26,29 +27,40 @@ class ConversaRepository {
         this.jdbc = jdbc;
     }
 
-    /** Busca a conversa ativa do número travando a linha até o fim da transação. */
-    Optional<Conversa> buscarAtivaParaAtualizar(String telefone) {
-        return jdbc.sql("select * from conversa where telefone = :t and ativa for update")
+    /** Busca a conversa ativa do número, deste corretor, travando a linha até o fim da transação. */
+    Optional<Conversa> buscarAtivaParaAtualizar(String corretorId, String telefone) {
+        return jdbc.sql("select * from conversa where corretor_id = :c and telefone = :t and ativa for update")
+                .param("c", corretorId)
                 .param("t", telefone)
                 .query(MAPPER).optional();
     }
 
-    Optional<Conversa> buscarParaAtualizar(UUID id) {
-        return jdbc.sql("select * from conversa where id = :id for update")
+    /** Só devolve a conversa se for deste corretor: o id de outro corretor se comporta como inexistente. */
+    Optional<Conversa> buscarParaAtualizar(String corretorId, UUID id) {
+        return jdbc.sql("select * from conversa where id = :id and corretor_id = :c for update")
                 .param("id", id)
+                .param("c", corretorId)
                 .query(MAPPER).optional();
     }
 
+    /** Só devolve a conversa se for deste corretor. */
+    Optional<Conversa> buscar(String corretorId, UUID id) {
+        return jdbc.sql("select * from conversa where id = :id and corretor_id = :c")
+                .param("id", id).param("c", corretorId).query(MAPPER).optional();
+    }
+
+    /** Uso interno da fila, que parte de uma conversa já reivindicada e conhece o dono por ela. */
     Optional<Conversa> buscar(UUID id) {
         return jdbc.sql("select * from conversa where id = :id").param("id", id).query(MAPPER).optional();
     }
 
     void inserir(Conversa c) {
         jdbc.sql("""
-                insert into conversa (id, telefone, estado, respostas_ia, ativa, criada_em, ultima_atividade_em)
-                values (:id, :telefone, :estado, :respostas, :ativa, :criada, :ultima)
+                insert into conversa (id, corretor_id, telefone, estado, respostas_ia, ativa, criada_em, ultima_atividade_em)
+                values (:id, :corretor, :telefone, :estado, :respostas, :ativa, :criada, :ultima)
                 """)
                 .param("id", c.id())
+                .param("corretor", c.corretorId())
                 .param("telefone", c.telefone())
                 .param("estado", c.estado().name())
                 .param("respostas", c.respostasIa())
@@ -72,8 +84,8 @@ class ConversaRepository {
                 .update();
     }
 
-    /** Conversas ativas, as mais recentes primeiro, com o que a IA já descobriu do cliente. */
-    List<ConversaService.ConversaResumo> listarResumos() {
+    /** Conversas ativas do corretor, as mais recentes primeiro, com o que a IA já descobriu do cliente. */
+    List<ConversaService.ConversaResumo> listarResumos(String corretorId) {
         return jdbc.sql("""
                 select c.id, c.telefone, c.estado, c.respostas_ia, c.ultima_atividade_em,
                        l.finalidade, l.regiao, l.faixa_valor, l.prazo, l.imovel_citado,
@@ -83,10 +95,11 @@ class ConversaRepository {
                   left join lateral (select texto, origem from mensagem m
                                       where m.conversa_id = c.id
                                       order by m.criada_em desc, m.id desc limit 1) u on true
-                 where c.ativa
+                 where c.ativa and c.corretor_id = :corretor
                  order by c.ultima_atividade_em desc
                  limit 200
                 """)
+                .param("corretor", corretorId)
                 .query((rs, n) -> new ConversaService.ConversaResumo(
                         rs.getObject("id", UUID.class),
                         rs.getString("telefone"),

@@ -8,3 +8,9 @@ databaseChangeLog:
   - include:
       file: changes/003-prompt-agente.sql
       relativeToChangelogFile: true
+  - include:
+      file: changes/004-corretores.sql
+      relativeToChangelogFile: true
+  - include:
+      file: changes/005-identidade-e-uso.sql
+      relativeToChangelogFile: true

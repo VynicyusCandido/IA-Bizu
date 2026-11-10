@@ -2,3 +2,8 @@
 spring:
   datasource:
     password: "2222"
+
+bizu:
+  painel:
+    # Par de chaves novo a cada partida: no dev não precisa de arquivo, mas as sessões caem ao reiniciar.
+    jwt-chave-efemera: true

@@ -30,8 +30,8 @@ public class EstiloService {
     }
 
     /** Devolve true se um perfil foi gerado e salvo; false se faltam mensagens ou o agente não gerou nada. */
-    public boolean gerar(Instant agora) {
-        List<String> textos = historico.mensagensEnviadas(MAXIMO_BUSCADO).stream()
+    public boolean gerar(String corretorId, Instant agora) {
+        List<String> textos = historico.mensagensEnviadas(corretorId, MAXIMO_BUSCADO).stream()
                 .filter(m -> m.texto() != null && !m.texto().isBlank())
                 .filter(m -> m.id() == null || !mensagens.existeSaidaIaPorWaId(m.id()))
                 .map(EstiloService::cortada)
@@ -40,7 +40,7 @@ public class EstiloService {
             return false;
         }
         Optional<String> perfil = agente.perfilDeEstilo(textos).filter(p -> !p.isBlank());
-        perfil.ifPresent(p -> prompts.salvarEstilo(p.strip(), agora));
+        perfil.ifPresent(p -> prompts.salvarEstilo(corretorId, p.strip(), agora));
         return perfil.isPresent();
     }
 

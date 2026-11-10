@@ -13,7 +13,7 @@ class ConversaTest {
 
     @Test
     void conversaNovaComecaNoBotComContadorZero() {
-        Conversa c = Conversa.nova("5511999990000", T0);
+        Conversa c = Conversa.nova("c1", "5511999990000", T0);
 
         assertThat(c.estado()).isEqualTo(Estado.BOT);
         assertThat(c.respostasIa()).isZero();
@@ -22,7 +22,7 @@ class ConversaTest {
 
     @Test
     void vigesimaRespostaSaiENaSequenciaAConversaEncerra() {
-        Conversa c = Conversa.nova("5511999990000", T0);
+        Conversa c = Conversa.nova("c1", "5511999990000", T0);
 
         for (int i = 1; i <= LIMITE; i++) {
             assertThat(c.podeResponder(LIMITE)).as("resposta %d deve poder sair", i).isTrue();
@@ -36,7 +36,7 @@ class ConversaTest {
 
     @Test
     void assumirSilenciaAIA() {
-        Conversa c = Conversa.nova("5511999990000", T0).assumida(T0);
+        Conversa c = Conversa.nova("c1", "5511999990000", T0).assumida(T0);
 
         assertThat(c.estado()).isEqualTo(Estado.HUMANO);
         assertThat(c.podeResponder(LIMITE)).isFalse();
@@ -44,7 +44,7 @@ class ConversaTest {
 
     @Test
     void devolverNaoZeraOContador() {
-        Conversa c = Conversa.nova("5511999990000", T0)
+        Conversa c = Conversa.nova("c1", "5511999990000", T0)
                 .aposRespostaIa(LIMITE, T0)
                 .aposRespostaIa(LIMITE, T0)
                 .assumida(T0)
@@ -56,7 +56,7 @@ class ConversaTest {
 
     @Test
     void devolverConversaQueJaAtingiuOLimiteContinuaEncerrada() {
-        Conversa c = Conversa.nova("5511999990000", T0);
+        Conversa c = Conversa.nova("c1", "5511999990000", T0);
         for (int i = 0; i < LIMITE; i++) {
             c = c.aposRespostaIa(LIMITE, T0);
         }
@@ -69,7 +69,7 @@ class ConversaTest {
 
     @Test
     void expiraSoDepoisDeSeteDiasSemAtividade() {
-        Conversa c = Conversa.nova("5511999990000", T0);
+        Conversa c = Conversa.nova("c1", "5511999990000", T0);
         Duration seteDias = Duration.ofDays(7);
 
         assertThat(c.expirada(T0.plus(Duration.ofDays(6)).plusSeconds(86_399), seteDias)).isFalse();

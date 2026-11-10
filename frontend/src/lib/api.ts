@@ -20,7 +20,21 @@ export type ConversaResumo = {
   ultimaOrigem: OrigemMensagem | null;
 };
 
-export type Mensagem = { origem: OrigemMensagem; texto: string; criadaEm: string };
+export type EstadoAssinatura = "ATIVA" | "AVISO" | "CARENCIA" | "VENCIDA";
+export type MotivoDaPausa = "CONTA_INATIVA" | "ASSINATURA_VENCIDA" | "LIMITE_MENSAL";
+export type Conta = {
+  nome: string | null;
+  email: string;
+  assinaturaAte: string | null;
+  estadoAssinatura: EstadoAssinatura;
+  iaAtiva: boolean;
+  /** Nulo quando a IA está respondendo; senão, por que ela parou. */
+  pausaPor: MotivoDaPausa | null;
+  respostasNoMes: number;
+  limiteDoMes: number;
+};
+
+export type Mensagem ={ origem: OrigemMensagem; texto: string; criadaEm: string };
 export type Prompt = { base: string; estilo: string | null; regrasFixas: string };
 export type SituacaoWhatsapp = {
   conectado: boolean;
@@ -57,21 +71,32 @@ export async function chamar<T>(caminho: string, init?: RequestInit): Promise<T>
 
 export const buscar = <T>(caminho: string) => chamar<T>(caminho);
 
+/** Cria a instância do corretor na primeira vez e pede o QR code; só a tela Conexão chama. */
+export const conectarWhatsapp = () => chamar<SituacaoWhatsapp>("/api/whatsapp/conectar", { method: "POST" });
+
 export const assumirConversa = (id: string) => chamar(`/api/conversas/${id}/assumir`, { method: "POST" });
 export const devolverConversa = (id: string) => chamar(`/api/conversas/${id}/devolver`, { method: "POST" });
 export const salvarPrompt = (base: string) =>
   chamar<Prompt>("/api/prompt", { method: "PUT", body: JSON.stringify({ base }) });
 export const gerarEstilo = () => chamar<{ gerado: boolean }>("/api/estilo/gerar", { method: "POST" });
 
-/** Troca o ID token do Google pela sessão do Bizu. Devolve o status HTTP quando o backend recusa. */
-export async function entrarComGoogle(idToken: string): Promise<{ ok: true } | { ok: false; status: number }> {
+export type ResultadoDoLogin = { ok: true } | { ok: false; status: number; motivo?: string };
+
+/**
+ * Troca o ID token do Google pela sessão do Bizu. Conta nova ou ainda não liberada volta 403 com
+ * motivo AGUARDANDO_LIBERACAO; outros erros voltam só o status HTTP (0 = sem resposta do servidor).
+ */
+export async function entrarComGoogle(idToken: string): Promise<ResultadoDoLogin> {
   try {
     const resposta = await fetch(`${API_URL}/api/auth/google`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ idToken }),
     });
-    if (!resposta.ok) return { ok: false, status: resposta.status };
+    if (!resposta.ok) {
+      const corpo = (await resposta.json().catch(() => null)) as { motivo?: string } | null;
+      return { ok: false, status: resposta.status, motivo: corpo?.motivo };
+    }
     salvarSessao((await resposta.json()) as { token: string; expiraEm: string });
     return { ok: true };
   } catch {
