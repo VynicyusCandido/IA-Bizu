@@ -2,7 +2,8 @@ import { lerSessao, limparSessao, salvarSessao } from "@/lib/sessao";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
 
-export type EstadoConversa = "BOT" | "HUMANO" | "ENCERRADA";
+/** SEM_IA: aparece no painel, mas a IA nunca atende (contato salvo ou contato sem número conhecido). */
+export type EstadoConversa = "BOT" | "HUMANO" | "ENCERRADA" | "SEM_IA";
 export type OrigemMensagem = "CLIENTE" | "IA" | "CORRETOR";
 
 export type ConversaResumo = {
@@ -18,6 +19,8 @@ export type ConversaResumo = {
   imovelCitado: string | null;
   ultimaMensagem: string | null;
   ultimaOrigem: OrigemMensagem | null;
+  /** Nome que o WhatsApp informa do contato, se houver. */
+  nome: string | null;
 };
 
 export type EstadoAssinatura = "ATIVA" | "AVISO" | "CARENCIA" | "VENCIDA";
@@ -73,6 +76,10 @@ export const buscar = <T>(caminho: string) => chamar<T>(caminho);
 
 /** Cria a instância do corretor na primeira vez e pede o QR code; só a tela Conexão chama. */
 export const conectarWhatsapp = () => chamar<SituacaoWhatsapp>("/api/whatsapp/conectar", { method: "POST" });
+
+/** Traz as conversas da última semana que já existiam no WhatsApp. Pode repetir: não duplica nada. */
+export const importarConversas = () =>
+  chamar<{ conversas: number; mensagens: number }>("/api/conversas/importar", { method: "POST" });
 
 export const assumirConversa = (id: string) => chamar(`/api/conversas/${id}/assumir`, { method: "POST" });
 export const devolverConversa = (id: string) => chamar(`/api/conversas/${id}/devolver`, { method: "POST" });

@@ -2,10 +2,12 @@ package app.bizu.whatsapp;
 
 import app.bizu.conversa.Canal;
 import app.bizu.conversa.Conexao;
+import app.bizu.conversa.HistoricoDeConversas;
 import app.bizu.conversa.HistoricoDoCorretor;
 import app.bizu.corretor.Corretor;
 import app.bizu.corretor.CorretorService;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -22,7 +24,7 @@ import tools.jackson.databind.JsonNode;
  * ele abre a conexão. Formato a confirmar contra uma instância real.
  */
 @Component
-class CanalEvolution implements Canal, Conexao, HistoricoDoCorretor {
+class CanalEvolution implements Canal, Conexao, HistoricoDoCorretor, HistoricoDeConversas {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     record Resposta(Chave key) {
@@ -31,6 +33,9 @@ class CanalEvolution implements Canal, Conexao, HistoricoDoCorretor {
     @JsonIgnoreProperties(ignoreUnknown = true)
     record Chave(String id) {
     }
+
+    private static final int TAMANHO_PAGINA = 100;
+    private static final int MAXIMO_PAGINAS = 20;
 
     private final RestClient http;
     private final EvolutionProperties props;
@@ -106,6 +111,110 @@ class CanalEvolution implements Canal, Conexao, HistoricoDoCorretor {
             }
         }
         return enviadas;
+    }
+
+    /**
+     * Conversas individuais com mensagem desde o instante dado, lidas do que a Evolution guardou. Para cada conversa
+     * recente pagina as mensagens (da mais nova para a mais velha) até passar da data. Formato conferido na Evolution
+     * 2.3.7. shortcut: no máximo 2000 mensagens por conversa, o suficiente para uma semana de atendimento.
+     */
+    @Override
+    public List<ConversaImportada> desde(String corretorId, Instant desde) {
+        List<ConversaImportada> conversas = new ArrayList<>();
+        Optional<String> instancia = instanciaDe(corretorId);
+        if (instancia.isEmpty()) {
+            return conversas;
+        }
+        JsonNode chats = http.post().uri("/chat/findChats/{instancia}", instancia.get())
+                .body(Map.of()).retrieve().body(JsonNode.class);
+        if (chats == null || !chats.isArray()) {
+            return conversas;
+        }
+        long desdeSegundos = desde.getEpochSecond();
+        for (JsonNode chat : chats) {
+            String jid = chat.path("remoteJid").asString("");
+            boolean individual = jid.endsWith("@s.whatsapp.net") || jid.endsWith("@lid");
+            if (individual && chat.path("lastMessage").path("messageTimestamp").asLong(0) >= desdeSegundos) {
+                conversaImportada(instancia.get(), chat, jid, desdeSegundos).ifPresent(conversas::add);
+            }
+        }
+        return conversas;
+    }
+
+    private Optional<ConversaImportada> conversaImportada(String instancia, JsonNode chat, String jid, long desdeSegundos) {
+        List<MensagemImportada> mensagens = new ArrayList<>();
+        String telefone = jid.endsWith("@s.whatsapp.net") ? jid.substring(0, jid.indexOf('@')) : null;
+        // O nome do contato é o pushName de uma mensagem que ELE mandou: o do chat vem vazio, e o pushName de
+        // mensagem do corretor é o nome do próprio corretor.
+        String nome = null;
+        for (int pagina = 1; pagina <= MAXIMO_PAGINAS; pagina++) {
+            JsonNode resposta = http.post().uri("/chat/findMessages/{instancia}", instancia)
+                    .body(Map.of("where", Map.of("key", Map.of("remoteJid", jid)), "page", pagina, "offset", TAMANHO_PAGINA))
+                    .retrieve().body(JsonNode.class);
+            JsonNode registros = resposta == null ? null : resposta.path("messages").path("records");
+            if (registros == null || !registros.isArray() || registros.size() == 0) {
+                break;
+            }
+            boolean passouDaData = false;
+            for (JsonNode registro : registros) {
+                if (telefone == null) {
+                    String alternativo = registro.path("key").path("remoteJidAlt").asString("");
+                    if (alternativo.endsWith("@s.whatsapp.net")) {
+                        telefone = alternativo.substring(0, alternativo.indexOf('@'));
+                    }
+                }
+                if (nome == null && !registro.path("key").path("fromMe").asBoolean(false)) {
+                    String pushName = registro.path("pushName").asString("");
+                    nome = pushName.isBlank() ? null : pushName.strip();
+                }
+                long segundos = registro.path("messageTimestamp").asLong(0);
+                if (segundos < desdeSegundos) {
+                    passouDaData = true; // da mais nova para a mais velha: o resto da conversa é anterior
+                    continue;
+                }
+                String id = registro.path("key").path("id").asString("");
+                String texto = textoDe(registro);
+                if (!id.isBlank() && texto != null) {
+                    mensagens.add(new MensagemImportada(id, registro.path("key").path("fromMe").asBoolean(false),
+                            texto, Instant.ofEpochSecond(segundos)));
+                }
+            }
+            if (passouDaData) {
+                break;
+            }
+        }
+        if (mensagens.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(new ConversaImportada(telefone != null ? telefone : jid, nome,
+                chat.path("isSaved").asBoolean(false), mensagens));
+    }
+
+    /** Texto para mostrar no painel; mídia vira um marcador ("[áudio]"). Tipos de bastidor (reação etc.) são ignorados. */
+    private static String textoDe(JsonNode registro) {
+        JsonNode m = registro.path("message");
+        return switch (registro.path("messageType").asString("")) {
+            case "conversation" -> naoVazio(m.path("conversation"));
+            case "extendedTextMessage" -> naoVazio(m.path("extendedTextMessage").path("text"));
+            case "imageMessage" -> comLegenda("[imagem]", m.path("imageMessage").path("caption"));
+            case "videoMessage" -> comLegenda("[vídeo]", m.path("videoMessage").path("caption"));
+            case "audioMessage" -> "[áudio]";
+            case "documentMessage" -> comLegenda("[documento]", m.path("documentMessage").path("fileName"));
+            case "stickerMessage" -> "[figurinha]";
+            case "contactMessage" -> "[contato]";
+            case "locationMessage" -> "[localização]";
+            default -> null;
+        };
+    }
+
+    private static String naoVazio(JsonNode no) {
+        String texto = no.asString("");
+        return texto.isBlank() ? null : texto;
+    }
+
+    private static String comLegenda(String marcador, JsonNode legenda) {
+        String texto = legenda.asString("");
+        return texto.isBlank() ? marcador : marcador + " " + texto.strip();
     }
 
     private boolean estaConectada(String instancia) {

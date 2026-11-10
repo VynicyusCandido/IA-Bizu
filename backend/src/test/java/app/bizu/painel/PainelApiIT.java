@@ -6,6 +6,9 @@ import app.bizu.BizuApplication;
 import app.bizu.conversa.Conexao;
 import app.bizu.conversa.ConversaService;
 import app.bizu.conversa.ConversaService.Resultado;
+import app.bizu.conversa.HistoricoDeConversas;
+import app.bizu.conversa.HistoricoDeConversas.ConversaImportada;
+import app.bizu.conversa.HistoricoDeConversas.MensagemImportada;
 import app.bizu.conversa.HistoricoDoCorretor;
 import app.bizu.conversa.PromptService;
 import app.bizu.corretor.ContaCriada;
@@ -92,6 +95,14 @@ class PainelApiIT {
                     return new Situacao(false, "data:image/png;base64,QR", "ABCD-1234");
                 }
             };
+        }
+
+        @Bean
+        @Primary
+        HistoricoDeConversas historicoDeConversasFalso() {
+            return (corretorId, desde) -> List.of(new ConversaImportada("5511933332222", "Cliente Importado", false,
+                    List.of(new MensagemImportada("IMP-1", false, "Oi, vi o anúncio", Instant.now().minusSeconds(7200)),
+                            new MensagemImportada("IMP-2", false, "[áudio]", Instant.now().minusSeconds(3600)))));
         }
 
         @Bean
@@ -404,9 +415,29 @@ class PainelApiIT {
         assertThat(webhook("teste", corpo).statusCode()).isEqualTo(200);
 
         assertThat(conversas.receberDoCliente(DONO, "5511977776666", "Oi", "WA-AGENDA-1", Instant.now()))
-                .isEqualTo(Resultado.IGNORADA);
+                .isEqualTo(Resultado.REGISTRADA);
+        assertThat(jdbc.sql("select estado from conversa where telefone = '5511977776666'").query(String.class).single())
+                .isEqualTo("SEM_IA");
         assertThat(conversas.receberDoCliente(DONO, "5511966665555", "Oi", "WA-NOVO-1", Instant.now()))
                 .isEqualTo(Resultado.ENFILEIRADA);
+    }
+
+    @Test
+    void importarTrazAsConversasDaSemanaParaOPainelEPodeRodarDeNovo() throws Exception {
+        String token = sessao();
+
+        HttpResponse<String> primeira = chamar("POST", "/api/conversas/importar", null, token);
+        assertThat(primeira.statusCode()).isEqualTo(200);
+        assertThat(primeira.body()).contains("\"conversas\":1").contains("\"mensagens\":2");
+
+        HttpResponse<String> lista = chamar("GET", "/api/conversas", null, token);
+        assertThat(lista.body()).contains("\"nome\":\"Cliente Importado\"").contains("5511933332222")
+                .contains("\"ultimaMensagem\":\"[áudio]\"");
+        UUID id = jdbc.sql("select id from conversa").query(UUID.class).single();
+        assertThat(chamar("GET", "/api/conversas/" + id + "/mensagens", null, token).body())
+                .contains("Oi, vi o anúncio").contains("[áudio]");
+
+        assertThat(chamar("POST", "/api/conversas/importar", null, token).body()).contains("\"mensagens\":0");
     }
 
     @Test
@@ -416,6 +447,7 @@ class PainelApiIT {
                 .isEqualTo(401);
         assertThat(chamar("GET", "/api/whatsapp", null, null).statusCode()).isEqualTo(401);
         assertThat(chamar("POST", "/api/whatsapp/conectar", null, null).statusCode()).isEqualTo(401);
+        assertThat(chamar("POST", "/api/conversas/importar", null, null).statusCode()).isEqualTo(401);
         assertThat(chamar("POST", "/api/estilo/gerar", null, null).statusCode()).isEqualTo(401);
     }
 

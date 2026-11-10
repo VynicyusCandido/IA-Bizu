@@ -66,7 +66,7 @@ class WebhookController {
 
         if (webhook.ehContatos()) {
             Instant agora = relogio.instant();
-            conversas.marcarContatosSalvos(corretorId, webhook.telefonesDeContatos(), agora);
+            conversas.marcarContatosSalvos(corretorId, webhook.contatos(), agora);
             return ResponseEntity.ok().build();
         }
 
@@ -77,12 +77,9 @@ class WebhookController {
                 conversas.receberDoCorretor(corretorId, telefone.get(), texto.get(), webhook.idMensagem(),
                         relogio.instant());
             } else {
-                conversas.receberDoCliente(corretorId, telefone.get(), texto.get(), webhook.idMensagem(),
-                        relogio.instant());
+                conversas.receberDoCliente(corretorId, telefone.get(), webhook.nomeDoContato().orElse(null),
+                        texto.get(), webhook.idMensagem(), relogio.instant());
             }
-        } else if (texto.isPresent() && webhook.jid().filter(j -> j.endsWith("@lid")).isPresent()) {
-            // Formato de endereço que o sistema ainda não entende: sem este aviso a mensagem sumiria em silêncio.
-            log.warn("Mensagem descartada: o destino {} não traz telefone (formato @lid)", webhook.jid().get());
         }
         return ResponseEntity.ok().build();
     }

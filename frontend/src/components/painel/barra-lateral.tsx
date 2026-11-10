@@ -48,7 +48,7 @@ export function BarraLateral() {
   };
 
   return (
-    <aside className="hidden shrink-0 p-4 pr-0 md:flex">
+    <aside className="hidden shrink-0 p-6 pr-0 md:flex">
       <div className="flex w-64 flex-col gap-5 rounded-3xl bg-zinc-950 p-4 text-zinc-50 ring-1 ring-white/10 dark:bg-zinc-900">
         <Link href="/conversas" className="flex flex-col gap-2 px-1 pt-1">
           <span className="flex items-center gap-3">

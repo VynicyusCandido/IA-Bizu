@@ -5,7 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import app.bizu.BizuApplication;
 import app.bizu.conversa.Agente.Qualificacao;
 import app.bizu.conversa.Agente.RespostaAgente;
+import app.bizu.conversa.ConversaService.ContatoSalvo;
 import app.bizu.conversa.ConversaService.Resultado;
+import app.bizu.conversa.HistoricoDeConversas.ConversaImportada;
+import app.bizu.conversa.HistoricoDeConversas.MensagemImportada;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -50,8 +53,8 @@ class FluxoDeConversaIT {
     @ServiceConnection
     static PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:17");
 
-    static final List<String> enviados = new ArrayList<>();
-    static final List<String> donosDosEnvios = new ArrayList<>();
+    static final List<String> enviados = java.util.Collections.synchronizedList(new ArrayList<>());
+    static final List<String> donosDosEnvios = java.util.Collections.synchronizedList(new ArrayList<>());
     static RespostaAgente proximaResposta;
     static RuntimeException falhaDoAgente;
     /** Roda dentro da chamada da IA: simula o que acontece enquanto o Claude ainda está pensando. */
@@ -209,19 +212,27 @@ class FluxoDeConversaIT {
         assertThat(manual).isEqualTo(Resultado.ASSUMIDA);
         assertThat(estado(CLIENTE)).isEqualTo("HUMANO");
 
+        // A conversa continua aparecendo no painel, mas a IA nunca volta sozinha.
         assertThat(service.receberDoCliente(C1, CLIENTE, "Obrigado", "WA-2", T0.plusSeconds(10)))
-                .isEqualTo(Resultado.IGNORADA);
+                .isEqualTo(Resultado.REGISTRADA);
         Instant muitoDepois = T0.plus(Duration.ofDays(30));
-        assertThat(service.receberDoCliente(C1, CLIENTE, "Voltei", "WA-3", muitoDepois)).isEqualTo(Resultado.IGNORADA);
+        assertThat(service.receberDoCliente(C1, CLIENTE, "Voltei", "WA-3", muitoDepois)).isEqualTo(Resultado.REGISTRADA);
         assertThat(enviados).isEmpty();
+        assertThat(estado(CLIENTE)).isEqualTo("HUMANO");
     }
 
     @Test
-    void contatoSalvoNuncaEAtendido() {
-        service.marcarContatosSalvos(C1, List.of(CLIENTE), T0);
+    void contatoSalvoApareceNoPainelMasNuncaEAtendidoPelaIA() {
+        service.marcarContatosSalvos(C1, List.of(new ContatoSalvo(CLIENTE, "Mãe")), T0);
 
-        assertThat(service.receberDoCliente(C1, CLIENTE, "Oi", "WA-1", T0)).isEqualTo(Resultado.IGNORADA);
-        assertThat(jdbc.sql("select count(*) from conversa").query(Integer.class).single()).isZero();
+        assertThat(service.receberDoCliente(C1, CLIENTE, "Oi", "WA-1", T0)).isEqualTo(Resultado.REGISTRADA);
+        while (processador.processarProxima(T0.plusSeconds(1))) {
+            // esvazia
+        }
+
+        assertThat(enviados).isEmpty();
+        assertThat(estado(CLIENTE)).isEqualTo("SEM_IA");
+        assertThat(service.listar(C1)).singleElement().satisfies(r -> assertThat(r.nome()).isEqualTo("Mãe"));
     }
 
     @Test
@@ -297,9 +308,9 @@ class FluxoDeConversaIT {
 
     @Test
     void contatoIgnoradoDeUmCorretorNaoAfetaOOutro() {
-        service.marcarContatosSalvos(C1, List.of(CLIENTE), T0);
+        service.marcarContatosSalvos(C1, List.of(new ContatoSalvo(CLIENTE, null)), T0);
 
-        assertThat(service.receberDoCliente(C1, CLIENTE, "Oi", "WA-1", T0)).isEqualTo(Resultado.IGNORADA);
+        assertThat(service.receberDoCliente(C1, CLIENTE, "Oi", "WA-1", T0)).isEqualTo(Resultado.REGISTRADA);
         assertThat(service.receberDoCliente(C2, CLIENTE, "Oi", "WA-2", T0)).isEqualTo(Resultado.ENFILEIRADA);
     }
 
@@ -424,6 +435,129 @@ class FluxoDeConversaIT {
 
         assertThat(simultaneas).isTrue();
         assertThat(donosDosEnvios).containsExactlyInAnyOrder(C1, C2);
+    }
+
+    @Test
+    void corretorEscreveuAntesDoClienteAConversaApareceComEleENuncaVoltaParaAIA() {
+        assertThat(service.receberDoCorretor(C1, CLIENTE, "Oi, tudo bem?", "WA-M-1", T0)).isEqualTo(Resultado.ASSUMIDA);
+
+        assertThat(estado(CLIENTE)).isEqualTo("HUMANO");
+        assertThat(service.receberDoCliente(C1, CLIENTE, "Tudo ótimo", "WA-2", T0.plusSeconds(5))).isEqualTo(Resultado.REGISTRADA);
+        UUID id = jdbc.sql("select id from conversa").query(UUID.class).single();
+        assertThat(service.mensagens(C1, id).orElseThrow()).extracting(m -> m.origem()).containsExactly("CORRETOR", "CLIENTE");
+        assertThat(enviados).isEmpty();
+    }
+
+    @Test
+    void mensagemDoCorretorParaContatoSalvoNaoViraConversaComEle() {
+        service.marcarContatosSalvos(C1, List.of(new ContatoSalvo(CLIENTE, null)), T0);
+
+        service.receberDoCorretor(C1, CLIENTE, "Oi, mãe", "WA-M-1", T0.plusSeconds(1));
+
+        assertThat(estado(CLIENTE)).isEqualTo("SEM_IA");
+        assertThat(jdbc.sql("select count(*) from mensagem").query(Integer.class).single()).isEqualTo(1);
+    }
+
+    @Test
+    void contatoSoComCodigoLidApareceComONomeMasAIANuncaResponde() {
+        assertThat(service.receberDoCliente(C1, "98765@lid", "Fulano", "Oi", "WA-1", T0)).isEqualTo(Resultado.REGISTRADA);
+
+        while (processador.processarProxima(T0.plusSeconds(1))) {
+            // esvazia
+        }
+
+        assertThat(enviados).isEmpty();
+        assertThat(service.listar(C1)).singleElement().satisfies(r -> {
+            assertThat(r.estado()).isEqualTo(Estado.SEM_IA);
+            assertThat(r.nome()).isEqualTo("Fulano");
+        });
+    }
+
+    @Test
+    void mensagemQueChegouAntesDaAgendaPassaASemIaQuandoAAgendaChega() {
+        assertThat(service.receberDoCliente(C1, CLIENTE, "Oi", "WA-1", T0)).isEqualTo(Resultado.ENFILEIRADA);
+
+        service.marcarContatosSalvos(C1, List.of(new ContatoSalvo(CLIENTE, null)), T0);
+        processador.processarProxima(T0.plusSeconds(1));
+
+        assertThat(estado(CLIENTE)).isEqualTo("SEM_IA");
+        assertThat(enviados).isEmpty();
+    }
+
+    @Test
+    void corretorNaoAssumeNemDevolveConversaSemIA() {
+        service.marcarContatosSalvos(C1, List.of(new ContatoSalvo(CLIENTE, null)), T0);
+        service.receberDoCliente(C1, CLIENTE, "Oi", "WA-1", T0);
+        UUID id = jdbc.sql("select id from conversa").query(UUID.class).single();
+
+        assertThat(service.assumir(C1, id, T0)).isEmpty();
+        assertThat(service.devolver(C1, id, T0)).isEmpty();
+        assertThat(estado(CLIENTE)).isEqualTo("SEM_IA");
+    }
+
+    private static List<ConversaImportada> historicoDaSemana() {
+        Instant ontem = T0.minus(Duration.ofDays(1));
+        return List.of(
+                // número novo, só o cliente falou: continua com a IA para a próxima mensagem
+                new ConversaImportada("5511900000001", "Cliente Novo", false,
+                        List.of(new MensagemImportada("H-1", false, "Vi o anúncio", ontem),
+                                new MensagemImportada("H-2", false, "[áudio]", ontem.plusSeconds(60)))),
+                // número novo que o corretor já atendeu: fica com ele
+                new ConversaImportada("5511900000002", null, false,
+                        List.of(new MensagemImportada("H-3", false, "Oi", ontem),
+                                new MensagemImportada("H-4", true, "Olá, tudo bem?", ontem.plusSeconds(120)))),
+                // contato salvo: aparece, sem IA
+                new ConversaImportada("5511900000003", "Mãe", true,
+                        List.of(new MensagemImportada("H-5", false, "Bom dia", ontem))),
+                // só código do WhatsApp, sem telefone: aparece, sem IA
+                new ConversaImportada("55555@lid", "Sem Número", false,
+                        List.of(new MensagemImportada("H-6", false, "Oi", ontem))));
+    }
+
+    @Test
+    void importacaoGravaComADataOriginalSemMexerNaFilaENaoFazAIAResponderRetroativamente() {
+        var resumo = service.importar(C1, historicoDaSemana(), T0);
+
+        assertThat(resumo.conversas()).isEqualTo(4);
+        assertThat(resumo.mensagens()).isEqualTo(6);
+        assertThat(jdbc.sql("select count(*) from fila_mensagem").query(Integer.class).single()).isZero();
+        assertThat(estado("5511900000001")).isEqualTo("BOT");
+        assertThat(estado("5511900000002")).isEqualTo("HUMANO");
+        assertThat(estado("5511900000003")).isEqualTo("SEM_IA");
+        assertThat(estado("55555@lid")).isEqualTo("SEM_IA");
+        assertThat(jdbc.sql("select motivo from contato_ignorado where telefone = '5511900000003'")
+                .query(String.class).single()).isEqualTo("AGENDA");
+        assertThat(jdbc.sql("select motivo from contato_ignorado where telefone = '5511900000002'")
+                .query(String.class).single()).isEqualTo("ESCRITA_MANUAL");
+        // a data da conversa é a da última mensagem, e não a de agora
+        assertThat(jdbc.sql("select ultima_atividade_em = :t from conversa where telefone = '5511900000001'")
+                .param("t", java.time.OffsetDateTime.ofInstant(T0.minus(Duration.ofDays(1)).plusSeconds(60), java.time.ZoneOffset.UTC))
+                .query(Boolean.class).single()).isTrue();
+        assertThat(processador.processarProxima(T0.plusSeconds(1))).isFalse();
+        assertThat(enviados).isEmpty();
+        assertThat(service.listar(C1)).extracting(r -> r.nome()).contains("Cliente Novo", "Mãe", "Sem Número");
+    }
+
+    @Test
+    void importarDeNovoNaoRepeteNada() {
+        service.importar(C1, historicoDaSemana(), T0);
+
+        var denovo = service.importar(C1, historicoDaSemana(), T0.plusSeconds(30));
+
+        assertThat(denovo.mensagens()).isZero();
+        assertThat(jdbc.sql("select count(*) from mensagem").query(Integer.class).single()).isEqualTo(6);
+        assertThat(jdbc.sql("select count(*) from conversa").query(Integer.class).single()).isEqualTo(4);
+    }
+
+    @Test
+    void depoisDeImportadaAConversaNovaDoClienteFalaComAIA() {
+        service.importar(C1, historicoDaSemana(), T0);
+
+        assertThat(service.receberDoCliente(C1, "5511900000001", "Ainda está disponível?", "WA-NOVA", T0.plusSeconds(10)))
+                .isEqualTo(Resultado.ENFILEIRADA);
+        processador.processarProxima(T0.plusSeconds(20));
+
+        assertThat(enviados).hasSize(1);
     }
 
     private int respostasIa(String telefone) {

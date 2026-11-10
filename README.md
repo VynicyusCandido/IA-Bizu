@@ -102,6 +102,19 @@ O `auth_id` é um código próprio do Bizu (UUID gerado na criação da conta) q
 
 Para qualquer conta Google chegar ao login, o app no Google Cloud precisa estar com público **Externo** e **publicado** (Google Auth Platform > Público-alvo > Publicar app). Em modo de teste só entram os e-mails cadastrados como usuários de teste.
 
+## Quais conversas aparecem, e quais a IA atende
+
+O painel mostra **toda conversa individual** do WhatsApp do corretor (grupos não). Só a IA tem regra de quem atende:
+
+| Situação do contato | Estado no painel | A IA responde? |
+|---|---|---|
+| Número novo, que o corretor nunca atendeu | IA respondendo | sim |
+| Número que o corretor atendeu ou assumiu | Com você | não, até ele devolver |
+| Contato salvo na agenda | IA não atende | nunca |
+| Contato que o WhatsApp só identifica por código (`@lid`), sem telefone | IA não atende | nunca (por enquanto) |
+
+Para trazer o que já existia, use o botão de histórico (ícone de relógio) no topo da lista de Conversas, ou "Importar a última semana" quando a lista está vazia. A importação lê o que a Evolution guardou, mantém a data original de cada mensagem, mostra mídia como marcador (`[áudio]`, `[imagem]`...) e **nunca faz a IA responder retroativamente**.
+
 ## Sessão do painel: par de chaves
 
 A sessão (JWT) é assinada com RS256. Só o backend tem a chave privada; qualquer outro serviço (catálogo, dashboard) verifica a sessão pela chave pública em `/.well-known/jwks.json` e não consegue emitir sessões. Para produção, gere o par uma vez e guarde o arquivo fora do repositório:
@@ -140,7 +153,8 @@ Todas exigem a sessão obtida em `POST /api/auth/google`.
 | `POST /api/whatsapp/conectar` | cria a instância do corretor na primeira vez e devolve o QR code (a tela Conexão usa) |
 | `GET /.well-known/jwks.json` (aberta) | chave pública que verifica as sessões, para outros serviços |
 | `GET /actuator/health` (aberta) | saúde da aplicação, para monitoramento |
-| `GET /api/conversas` | lista as conversas com a qualificação do cliente |
+| `GET /api/conversas` | lista as conversas com a qualificação do cliente, o nome do contato e a prévia da última mensagem |
+| `POST /api/conversas/importar` | traz para o painel as conversas da última semana que já existiam no WhatsApp; pode repetir sem duplicar |
 | `POST /api/conversas/{id}/assumir` e `/devolver` | o corretor assume ou devolve a conversa |
 | `POST /api/estilo/gerar` | gera o perfil de estilo do corretor |
 

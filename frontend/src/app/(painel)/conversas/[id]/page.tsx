@@ -12,13 +12,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { buscar, ErroApi, type ConversaResumo, type Mensagem } from "@/lib/api";
-import { diaDaMensagem, ESTADOS, formatarTelefone, LIMITE_RESPOSTAS } from "@/lib/formatar";
+import { diaDaMensagem, ESTADOS, formatarTelefone, LIMITE_RESPOSTAS, tituloDaConversa } from "@/lib/formatar";
 import { cn } from "@/lib/utils";
 
 const AVISO = {
   BOT: "A IA está respondendo. Assuma quando quiser responder você mesmo.",
   HUMANO: "Você assumiu esta conversa. A IA está em silêncio: responda pelo seu WhatsApp.",
   ENCERRADA: `A IA chegou ao limite de ${LIMITE_RESPOSTAS} respostas e parou. Continue pelo seu WhatsApp.`,
+  SEM_IA: "A IA não atende este contato (contato salvo ou sem número conhecido). Você conversa pelo seu WhatsApp.",
 } as const;
 
 function Qualificacao({ conversa }: { conversa: ConversaResumo }) {
@@ -82,17 +83,25 @@ export default function ConversaAberta() {
         <div className="min-w-0 flex-1">
           {conversa ? (
             <>
-              <p className="truncate font-medium">{formatarTelefone(conversa.telefone)}</p>
+              <p className="truncate font-medium">{tituloDaConversa(conversa.nome, conversa.telefone)}</p>
               <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <span className={cn("size-2 rounded-full", ESTADOS[conversa.estado].ponto)} aria-hidden />
-                {ESTADOS[conversa.estado].rotulo} · {conversa.respostasIa}/{LIMITE_RESPOSTAS} respostas
+                <span className="truncate">
+                  {[
+                    ESTADOS[conversa.estado].rotulo,
+                    conversa.estado !== "SEM_IA" && `${conversa.respostasIa}/${LIMITE_RESPOSTAS} respostas`,
+                    conversa.nome && !conversa.telefone.includes("@") && formatarTelefone(conversa.telefone),
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </span>
               </p>
             </>
           ) : (
             <Skeleton className="h-9 w-40" />
           )}
         </div>
-        {conversa && <AcaoDaConversa id={conversa.id} estado={conversa.estado} />}
+        {conversa && conversa.estado !== "SEM_IA" && <AcaoDaConversa id={conversa.id} estado={conversa.estado} />}
       </div>
 
       {conversa && <Qualificacao conversa={conversa} />}

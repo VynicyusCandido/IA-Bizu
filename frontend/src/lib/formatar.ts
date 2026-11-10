@@ -2,9 +2,17 @@ import type { EstadoConversa, OrigemMensagem } from "@/lib/api";
 
 /** 5511999990001 -> +55 11 99999-0001. Números que não são do Brasil só ganham o "+". */
 export function formatarTelefone(telefone: string): string {
+  // Contato que o WhatsApp só identifica por código (termina em @lid): não há telefone para mostrar.
+  if (telefone.includes("@")) return "Sem número";
   const digitos = telefone.replace(/\D/g, "");
   const br = /^55(\d{2})(\d{4,5})(\d{4})$/.exec(digitos);
   return br ? `+55 ${br[1]} ${br[2]}-${br[3]}` : `+${digitos}`;
+}
+
+/** O que aparece como título da conversa: o nome do contato ou, sem nome, o telefone. */
+export function tituloDaConversa(nome: string | null, telefone: string): string {
+  if (nome?.trim()) return nome.trim();
+  return telefone.includes("@") ? "Contato sem número" : formatarTelefone(telefone);
 }
 
 /** "agora", "5 min", "3 h", "ontem", "4 d" ou a data (dd/MM) depois de uma semana. */
@@ -43,4 +51,5 @@ export const ESTADOS: Record<EstadoConversa, { rotulo: string; ponto: string }> 
   BOT: { rotulo: "IA respondendo", ponto: "bg-emerald-500" },
   HUMANO: { rotulo: "Com você", ponto: "bg-amber-500" },
   ENCERRADA: { rotulo: "Limite atingido", ponto: "bg-zinc-400 dark:bg-zinc-500" },
+  SEM_IA: { rotulo: "IA não atende", ponto: "bg-zinc-400 dark:bg-zinc-500" },
 };

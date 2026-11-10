@@ -4,6 +4,8 @@ import app.bizu.conversa.Conversa;
 import app.bizu.conversa.ConversaService;
 import app.bizu.conversa.ConversaService.ConversaResumo;
 import app.bizu.conversa.ConversaService.MensagemDaConversa;
+import app.bizu.conversa.ConversaService.ResumoDaImportacao;
+import app.bizu.conversa.ImportadorDeConversas;
 import java.time.Clock;
 import java.util.List;
 import java.util.UUID;
@@ -22,10 +24,12 @@ import org.springframework.web.bind.annotation.RestController;
 class ConversaController {
 
     private final ConversaService conversas;
+    private final ImportadorDeConversas importador;
     private final Clock relogio;
 
-    ConversaController(ConversaService conversas, Clock relogio) {
+    ConversaController(ConversaService conversas, ImportadorDeConversas importador, Clock relogio) {
         this.conversas = conversas;
+        this.importador = importador;
         this.relogio = relogio;
     }
 
@@ -38,6 +42,12 @@ class ConversaController {
     ResponseEntity<List<MensagemDaConversa>> mensagens(@AuthenticationPrincipal Jwt sessao, @PathVariable UUID id) {
         return conversas.mensagens(sessao.getSubject(), id).map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    /** Traz para o painel as conversas da última semana que já existiam no WhatsApp; pode rodar de novo à vontade. */
+    @PostMapping("/importar")
+    ResumoDaImportacao importar(@AuthenticationPrincipal Jwt sessao) {
+        return importador.ultimaSemana(sessao.getSubject(), relogio.instant());
     }
 
     @PostMapping("/{id}/assumir")

@@ -70,6 +70,27 @@ class ConversaRepository {
                 .update();
     }
 
+    /** Guarda o nome que o WhatsApp informa do contato; nome em branco não apaga o que já existe. */
+    void atualizarNome(UUID id, String nome) {
+        if (nome == null || nome.isBlank()) {
+            return;
+        }
+        jdbc.sql("update conversa set nome_contato = :n where id = :id and nome_contato is distinct from :n")
+                .param("id", id).param("n", nome.strip()).update();
+    }
+
+    /** Contato que acabou de ser identificado como salvo: a IA para de atender as conversas dele que estavam com ela. */
+    void pararIa(String corretorId, java.util.Collection<String> telefones) {
+        if (telefones.isEmpty()) {
+            return;
+        }
+        jdbc.sql("""
+                update conversa set estado = 'SEM_IA'
+                 where corretor_id = :c and telefone in (:t) and ativa and estado = 'BOT'
+                """)
+                .param("c", corretorId).param("t", telefones).update();
+    }
+
     void atualizar(Conversa c) {
         jdbc.sql("""
                 update conversa
@@ -89,9 +110,11 @@ class ConversaRepository {
         return jdbc.sql("""
                 select c.id, c.telefone, c.estado, c.respostas_ia, c.ultima_atividade_em,
                        l.finalidade, l.regiao, l.faixa_valor, l.prazo, l.imovel_citado,
-                       left(u.texto, 120) as ultima_mensagem, u.origem as ultima_origem
+                       left(u.texto, 120) as ultima_mensagem, u.origem as ultima_origem,
+                       coalesce(c.nome_contato, ci.nome) as nome
                   from conversa c
                   left join lead l on l.conversa_id = c.id
+                  left join contato_ignorado ci on ci.corretor_id = c.corretor_id and ci.telefone = c.telefone
                   left join lateral (select texto, origem from mensagem m
                                       where m.conversa_id = c.id
                                       order by m.criada_em desc, m.id desc limit 1) u on true
@@ -112,7 +135,8 @@ class ConversaRepository {
                         rs.getString("prazo"),
                         rs.getString("imovel_citado"),
                         rs.getString("ultima_mensagem"),
-                        rs.getString("ultima_origem")))
+                        rs.getString("ultima_origem"),
+                        rs.getString("nome")))
                 .list();
     }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatarTelefone, previa, tempoRelativo } from "@/lib/formatar";
+import { formatarTelefone, previa, tempoRelativo, tituloDaConversa } from "@/lib/formatar";
 
 describe("formatarTelefone", () => {
   it("formata celular e fixo do Brasil", () => {
@@ -9,6 +9,19 @@ describe("formatarTelefone", () => {
 
   it("deixa números de fora do Brasil só com o +", () => {
     expect(formatarTelefone("14155550123")).toBe("+14155550123");
+  });
+});
+
+describe("tituloDaConversa", () => {
+  it("prefere o nome do contato", () => {
+    expect(tituloDaConversa("Ana Souza", "5511999990001")).toBe("Ana Souza");
+  });
+
+  it("sem nome mostra o telefone, e sem telefone avisa que não há número", () => {
+    expect(tituloDaConversa(null, "5511999990001")).toBe("+55 11 99999-0001");
+    expect(tituloDaConversa("  ", "5511999990001")).toBe("+55 11 99999-0001");
+    expect(tituloDaConversa(null, "98765@lid")).toBe("Contato sem número");
+    expect(formatarTelefone("98765@lid")).toBe("Sem número");
   });
 });
 

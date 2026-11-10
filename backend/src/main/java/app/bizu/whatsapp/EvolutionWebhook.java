@@ -1,5 +1,6 @@
 package app.bizu.whatsapp;
 
+import app.bizu.conversa.ConversaService.ContatoSalvo;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.ArrayList;
 import java.util.List;
@@ -14,6 +15,7 @@ import tools.jackson.databind.JsonNode;
 record EvolutionWebhook(String event, String instance, JsonNode data) {
 
     private static final String INDIVIDUAL = "@s.whatsapp.net";
+    private static final String LID = "@lid";
 
     boolean ehNovaMensagem() {
         return evento("messages.upsert") && data != null && data.isObject();
@@ -24,21 +26,25 @@ record EvolutionWebhook(String event, String instance, JsonNode data) {
         return evento("contacts.upsert");
     }
 
-    /** Telefones de conversa individual dos contatos do evento; grupos e formatos desconhecidos são ignorados. */
-    List<String> telefonesDeContatos() {
-        List<String> telefones = new ArrayList<>();
+    /**
+     * Contatos de conversa individual do evento, com o nome que o WhatsApp informa. Grupos e formatos
+     * desconhecidos são ignorados.
+     */
+    List<ContatoSalvo> contatos() {
+        List<ContatoSalvo> contatos = new ArrayList<>();
         if (!ehContatos() || data == null) {
-            return telefones;
+            return contatos;
         }
-        Iterable<JsonNode> contatos = data.isArray() ? data : List.of(data);
-        for (JsonNode contato : contatos) {
+        Iterable<JsonNode> itens = data.isArray() ? data : List.of(data);
+        for (JsonNode contato : itens) {
             String jid = texto(contato.path("remoteJid"));
             if (jid == null) {
                 jid = texto(contato.path("id"));
             }
-            telefoneDe(jid).ifPresent(telefones::add);
+            identificadorDe(jid, texto(contato.path("remoteJidAlt")))
+                    .ifPresent(id -> contatos.add(new ContatoSalvo(id, texto(contato.path("pushName")))));
         }
-        return telefones;
+        return contatos;
     }
 
     /** O JID de destino da mensagem, como veio (serve para registrar o que foi descartado). */
@@ -46,9 +52,21 @@ record EvolutionWebhook(String event, String instance, JsonNode data) {
         return Optional.ofNullable(data == null ? null : texto(data.path("key").path("remoteJid")));
     }
 
-    /** Telefone só para conversa individual; grupos, status e outros destinos são descartados. */
+    /**
+     * Quem é o contato, só para conversa individual: o telefone (dígitos) ou, quando o WhatsApp só informa um código
+     * (@lid) e não traz o telefone, esse código com o "@lid". Grupos, status e outros destinos são descartados.
+     */
     Optional<String> telefone() {
-        return jid().flatMap(EvolutionWebhook::telefoneDe);
+        String alternativo = data == null ? null : texto(data.path("key").path("remoteJidAlt"));
+        return identificadorDe(jid().orElse(null), alternativo);
+    }
+
+    /** Nome que o próprio contato usa no WhatsApp (pushName), em mensagem que ele mandou. */
+    Optional<String> nomeDoContato() {
+        if (data == null || fromMe()) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(texto(data.path("pushName"))).filter(n -> !n.isBlank());
     }
 
     Optional<String> texto() {
@@ -73,6 +91,15 @@ record EvolutionWebhook(String event, String instance, JsonNode data) {
 
     private boolean evento(String nome) {
         return event != null && event.replace('_', '.').equalsIgnoreCase(nome);
+    }
+
+    /** O WhatsApp novo identifica muitos contatos por @lid e põe o telefone verdadeiro em outro campo (jid alternativo). */
+    private static Optional<String> identificadorDe(String jid, String jidAlternativo) {
+        Optional<String> telefone = telefoneDe(jid).or(() -> telefoneDe(jidAlternativo));
+        if (telefone.isPresent()) {
+            return telefone;
+        }
+        return jid != null && jid.endsWith(LID) ? Optional.of(jid) : Optional.empty();
     }
 
     private static Optional<String> telefoneDe(String jid) {

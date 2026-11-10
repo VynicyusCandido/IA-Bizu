@@ -16,7 +16,17 @@ public record Conversa(
         Instant ultimaAtividadeEm) {
 
     public static Conversa nova(String corretorId, String telefone, Instant agora) {
-        return new Conversa(UUID.randomUUID(), corretorId, telefone, Estado.BOT, 0, true, agora, agora);
+        return nova(corretorId, telefone, Estado.BOT, agora);
+    }
+
+    /** Conversa nova já no estado certo (contato salvo nasce SEM_IA, quem o corretor já atende nasce HUMANO). */
+    public static Conversa nova(String corretorId, String telefone, Estado estado, Instant agora) {
+        return new Conversa(UUID.randomUUID(), corretorId, telefone, estado, 0, true, agora, agora);
+    }
+
+    /** Conversa que o histórico importado criou: nasce na data da primeira mensagem e vale até a última. */
+    public static Conversa doHistorico(String corretorId, String telefone, Estado estado, Instant primeira, Instant ultima) {
+        return new Conversa(UUID.randomUUID(), corretorId, telefone, estado, 0, true, primeira, ultima);
     }
 
     public boolean podeResponder(int limite) {
