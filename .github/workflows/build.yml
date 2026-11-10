@@ -3,9 +3,9 @@ name: Build
 on:
   push:
     branches: [main]
-    paths: ["backend/**", ".github/workflows/build.yml"]
+    paths: ["backend/**", "frontend/**", ".github/workflows/build.yml"]
   pull_request:
-    paths: ["backend/**", ".github/workflows/build.yml"]
+    paths: ["backend/**", "frontend/**", ".github/workflows/build.yml"]
 
 permissions:
   contents: read
@@ -40,3 +40,24 @@ jobs:
           path: backend/target/bizu-*.jar
           if-no-files-found: error
           retention-days: 7
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+
+      # Estilo e tipos, depois a compilação de produção do Next.js.
+      - run: npm run lint
+      - run: npm run build

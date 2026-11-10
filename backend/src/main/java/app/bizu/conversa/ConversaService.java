@@ -27,6 +27,10 @@ public class ConversaService {
                                  String imovelCitado, String ultimaMensagem, String ultimaOrigem) {
     }
 
+    /** Uma mensagem do histórico mostrado no painel; {@code origem} é CLIENTE, IA ou CORRETOR. */
+    public record MensagemDaConversa(String origem, String texto, Instant criadaEm) {
+    }
+
     private static final Duration JANELA_ECO = Duration.ofSeconds(60);
 
     private final ConversaRepository conversas;
@@ -106,6 +110,12 @@ public class ConversaService {
     @Transactional(readOnly = true)
     public List<ConversaResumo> listar() {
         return conversas.listarResumos();
+    }
+
+    /** Histórico da conversa; vazio se ela não existe. */
+    @Transactional(readOnly = true)
+    public Optional<List<MensagemDaConversa>> mensagens(UUID id) {
+        return conversas.buscar(id).map(c -> mensagens.listar(id));
     }
 
     /** O corretor assume pelo painel: a IA para de responder. Vazio se a conversa não existe ou não está ativa. */

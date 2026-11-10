@@ -107,6 +107,23 @@ class PainelApiIT {
     }
 
     @Test
+    void navegadorDoPainelPodeChamarAApiMasOutrasOrigensNao() throws Exception {
+        assertThat(preflight("http://localhost:3000").headers().firstValue("Access-Control-Allow-Origin"))
+                .contains("http://localhost:3000");
+        assertThat(preflight("http://site-qualquer.com").headers().firstValue("Access-Control-Allow-Origin"))
+                .isEmpty();
+    }
+
+    private HttpResponse<String> preflight(String origem) throws Exception {
+        return http.send(HttpRequest.newBuilder(URI.create("http://localhost:" + porta + "/api/conversas"))
+                .method("OPTIONS", HttpRequest.BodyPublishers.noBody())
+                .header("Origin", origem)
+                .header("Access-Control-Request-Method", "GET")
+                .header("Access-Control-Request-Headers", "authorization,content-type")
+                .build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    @Test
     void loginRecusaTokenInvalidoEOutraConta() throws Exception {
         assertThat(login("token-qualquer").statusCode()).isEqualTo(401);
         assertThat(login("token-de-outra-pessoa").statusCode()).isEqualTo(403);
@@ -219,6 +236,24 @@ class PainelApiIT {
                 .isEqualTo(404);
         assertThat(chamar("POST", "/api/conversas/nao-e-um-id/devolver", null, sessao()).statusCode())
                 .isEqualTo(400);
+    }
+
+    @Test
+    void corretorLeOHistoricoDaConversaEmOrdem() throws Exception {
+        String token = sessao();
+        Instant t = Instant.now();
+        conversas.receberDoCliente("5511977771111", "Primeira", "WA-H-1", t);
+        conversas.receberDoCliente("5511977771111", "Segunda", "WA-H-2", t.plusSeconds(1));
+        UUID id = jdbc.sql("select id from conversa where telefone = '5511977771111'").query(UUID.class).single();
+
+        assertThat(chamar("GET", "/api/conversas/" + id + "/mensagens", null, null).statusCode()).isEqualTo(401);
+        HttpResponse<String> resposta = chamar("GET", "/api/conversas/" + id + "/mensagens", null, token);
+
+        assertThat(resposta.statusCode()).isEqualTo(200);
+        assertThat(resposta.body()).contains("\"origem\":\"CLIENTE\"").contains("\"criadaEm\"");
+        assertThat(resposta.body().indexOf("Primeira")).isPositive().isLessThan(resposta.body().indexOf("Segunda"));
+        assertThat(chamar("GET", "/api/conversas/" + UUID.randomUUID() + "/mensagens", null, token).statusCode())
+                .isEqualTo(404);
     }
 
     @Test

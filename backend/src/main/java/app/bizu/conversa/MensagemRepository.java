@@ -62,6 +62,15 @@ class MensagemRepository {
                 .query(Integer.class).single() > 0;
     }
 
+    /** Mensagens da conversa em ordem, para o painel mostrar o histórico. */
+    List<ConversaService.MensagemDaConversa> listar(UUID conversaId) {
+        return jdbc.sql("select origem, texto, criada_em from mensagem where conversa_id = :c order by criada_em, id")
+                .param("c", conversaId)
+                .query((rs, n) -> new ConversaService.MensagemDaConversa(
+                        rs.getString("origem"), rs.getString("texto"), Tempo.ler(rs, "criada_em")))
+                .list();
+    }
+
     List<Agente.Trecho> historico(UUID conversaId) {
         return jdbc.sql("select origem, texto from mensagem where conversa_id = :c order by criada_em, id")
                 .param("c", conversaId)

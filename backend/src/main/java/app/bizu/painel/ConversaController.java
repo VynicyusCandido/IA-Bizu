@@ -3,6 +3,7 @@ package app.bizu.painel;
 import app.bizu.conversa.Conversa;
 import app.bizu.conversa.ConversaService;
 import app.bizu.conversa.ConversaService.ConversaResumo;
+import app.bizu.conversa.ConversaService.MensagemDaConversa;
 import java.time.Clock;
 import java.util.List;
 import java.util.UUID;
@@ -29,6 +30,12 @@ class ConversaController {
     @GetMapping
     List<ConversaResumo> listar() {
         return conversas.listar();
+    }
+
+    @GetMapping("/{id}/mensagens")
+    ResponseEntity<List<MensagemDaConversa>> mensagens(@PathVariable UUID id) {
+        return conversas.mensagens(id).map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
     @PostMapping("/{id}/assumir")

@@ -3,9 +3,9 @@ name: Testes
 on:
   push:
     branches: [main]
-    paths: ["backend/**", ".github/workflows/test.yml"]
+    paths: ["backend/**", "frontend/**", ".github/workflows/test.yml"]
   pull_request:
-    paths: ["backend/**", ".github/workflows/test.yml"]
+    paths: ["backend/**", "frontend/**", ".github/workflows/test.yml"]
 
 permissions:
   contents: read
@@ -45,3 +45,21 @@ jobs:
             backend/target/failsafe-reports
           if-no-files-found: ignore
           retention-days: 7
+
+  test-frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+      - run: npm test

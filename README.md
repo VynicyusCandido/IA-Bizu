@@ -75,6 +75,19 @@ cd backend
 mvn verify
 ```
 
+## Painel (front-end)
+
+Next.js, shadcn/ui (paleta zinc), ícones Lucide, modo claro e escuro. Telas: Conversas (lista com prévia e conversa aberta, com Assumir e Devolver à IA), Agente (instruções e estilo) e Conexão (QR code do WhatsApp).
+
+```bash
+cd frontend
+cp .env.example .env.local   # preencha NEXT_PUBLIC_GOOGLE_CLIENT_ID (o mesmo GOOGLE_CLIENT_ID do backend)
+npm install
+npm run dev                  # http://localhost:3000
+```
+
+No Google Cloud, em "Origens JavaScript autorizadas" do cliente OAuth, cadastre `http://localhost:3000`. Outros comandos: `npm run lint`, `npm test`, `npm run build`.
+
 ## API do painel
 
 Todas exigem a sessão obtida em `POST /api/auth/google`.

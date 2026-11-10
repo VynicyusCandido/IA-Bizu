@@ -75,8 +75,9 @@ class SegurancaConfig {
         return new NimbusJwtEncoder(new ImmutableSecret<>(chave));
     }
 
+    /** O nome do bean importa: é por ele que o Spring Security acha esta configuração de CORS. */
     @Bean
-    CorsConfigurationSource cors(PainelProperties props) {
+    CorsConfigurationSource corsConfigurationSource(PainelProperties props) {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowedOrigins(List.of(props.origemPermitida()));
         config.setAllowedMethods(List.of("GET", "PUT", "POST", "OPTIONS"));
