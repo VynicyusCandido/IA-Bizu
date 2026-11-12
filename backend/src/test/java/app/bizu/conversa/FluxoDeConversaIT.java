@@ -499,18 +499,18 @@ class FluxoDeConversaIT {
         Instant ontem = T0.minus(Duration.ofDays(1));
         return List.of(
                 // número novo, só o cliente falou: continua com a IA para a próxima mensagem
-                new ConversaImportada("5511900000001", "Cliente Novo", false,
+                new ConversaImportada("5511900000001", "Cliente Novo", "https://pps.whatsapp.net/foto.jpg", false,
                         List.of(new MensagemImportada("H-1", false, "Vi o anúncio", ontem),
                                 new MensagemImportada("H-2", false, "[áudio]", ontem.plusSeconds(60)))),
                 // número novo que o corretor já atendeu: fica com ele
-                new ConversaImportada("5511900000002", null, false,
+                new ConversaImportada("5511900000002", null, null, false,
                         List.of(new MensagemImportada("H-3", false, "Oi", ontem),
                                 new MensagemImportada("H-4", true, "Olá, tudo bem?", ontem.plusSeconds(120)))),
                 // contato salvo: aparece, sem IA
-                new ConversaImportada("5511900000003", "Mãe", true,
+                new ConversaImportada("5511900000003", "Mãe", null, true,
                         List.of(new MensagemImportada("H-5", false, "Bom dia", ontem))),
                 // só código do WhatsApp, sem telefone: aparece, sem IA
-                new ConversaImportada("55555@lid", "Sem Número", false,
+                new ConversaImportada("55555@lid", "Sem Número", null, false,
                         List.of(new MensagemImportada("H-6", false, "Oi", ontem))));
     }
 
@@ -536,6 +536,10 @@ class FluxoDeConversaIT {
         assertThat(processador.processarProxima(T0.plusSeconds(1))).isFalse();
         assertThat(enviados).isEmpty();
         assertThat(service.listar(C1)).extracting(r -> r.nome()).contains("Cliente Novo", "Mãe", "Sem Número");
+        assertThat(service.listar(C1)).filteredOn(r -> "Cliente Novo".equals(r.nome()))
+                .extracting(r -> r.fotoUrl()).containsExactly("https://pps.whatsapp.net/foto.jpg");
+        assertThat(service.listar(C1)).filteredOn(r -> "Mãe".equals(r.nome()))
+                .extracting(r -> r.fotoUrl()).containsOnlyNulls();
     }
 
     @Test

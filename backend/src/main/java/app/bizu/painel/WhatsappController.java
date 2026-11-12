@@ -23,7 +23,8 @@ class WhatsappController {
     /** Barato e sem efeito colateral: a barra do painel pergunta isto a cada poucos segundos. */
     @GetMapping
     Situacao situacao(@AuthenticationPrincipal Jwt sessao) {
-        return new Situacao(conexao.conectado(sessao.getSubject()), null, null);
+        boolean conectado = conexao.conectado(sessao.getSubject());
+        return new Situacao(conectado, null, null, conectado ? conexao.fotoDoCorretor(sessao.getSubject()) : null);
     }
 
     /** Cria a instância na primeira vez e devolve o QR code; a tela de conexão repete enquanto não conectar. */

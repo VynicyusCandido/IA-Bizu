@@ -79,6 +79,15 @@ class ConversaRepository {
                 .param("id", id).param("n", nome.strip()).update();
     }
 
+    /** Guarda a foto do contato (só https); foto em branco não apaga a que já existe. */
+    void atualizarFoto(UUID id, String url) {
+        if (url == null || !url.startsWith("https://")) {
+            return;
+        }
+        jdbc.sql("update conversa set foto_url = :u where id = :id and foto_url is distinct from :u")
+                .param("id", id).param("u", url).update();
+    }
+
     /** Contato que acabou de ser identificado como salvo: a IA para de atender as conversas dele que estavam com ela. */
     void pararIa(String corretorId, java.util.Collection<String> telefones) {
         if (telefones.isEmpty()) {
@@ -111,7 +120,7 @@ class ConversaRepository {
                 select c.id, c.telefone, c.estado, c.respostas_ia, c.ultima_atividade_em,
                        l.finalidade, l.regiao, l.faixa_valor, l.prazo, l.imovel_citado,
                        left(u.texto, 120) as ultima_mensagem, u.origem as ultima_origem,
-                       coalesce(c.nome_contato, ci.nome) as nome
+                       coalesce(c.nome_contato, ci.nome) as nome, c.foto_url
                   from conversa c
                   left join lead l on l.conversa_id = c.id
                   left join contato_ignorado ci on ci.corretor_id = c.corretor_id and ci.telefone = c.telefone
@@ -136,7 +145,8 @@ class ConversaRepository {
                         rs.getString("imovel_citado"),
                         rs.getString("ultima_mensagem"),
                         rs.getString("ultima_origem"),
-                        rs.getString("nome")))
+                        rs.getString("nome"),
+                        rs.getString("foto_url")))
                 .list();
     }
 

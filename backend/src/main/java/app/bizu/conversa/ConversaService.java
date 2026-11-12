@@ -24,11 +24,12 @@ public class ConversaService {
     /**
      * Linha do painel: a conversa, o que a IA descobriu do cliente e a prévia da última mensagem
      * (até 120 caracteres; {@code ultimaOrigem} é CLIENTE, IA ou CORRETOR). {@code nome} é o nome do contato, se
-     * o WhatsApp informou.
+     * o WhatsApp informou; {@code fotoUrl}, a foto dele (https), se houver.
      */
     public record ConversaResumo(UUID id, String telefone, Estado estado, int respostasIa, Instant ultimaAtividadeEm,
                                  String finalidade, String regiao, String faixaValor, String prazo,
-                                 String imovelCitado, String ultimaMensagem, String ultimaOrigem, String nome) {
+                                 String imovelCitado, String ultimaMensagem, String ultimaOrigem, String nome,
+                                 String fotoUrl) {
     }
 
     /** Uma mensagem do histórico mostrado no painel; {@code origem} é CLIENTE, IA ou CORRETOR. */
@@ -231,6 +232,7 @@ public class ConversaService {
                 }
             }
             conversas.atualizarNome(conversa.id(), chat.nome());
+            conversas.atualizarFoto(conversa.id(), chat.fotoUrl());
             totalConversas++;
         }
         return new ResumoDaImportacao(totalConversas, totalMensagens);

@@ -4,6 +4,7 @@ import { LogOut, Smartphone } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
+import { AvatarDoContato } from "@/components/conversas/avatar-do-contato";
 import { Logo } from "@/components/painel/logo";
 import { ITENS, useAtivo } from "@/components/painel/navegacao";
 import { buscar, type Conta, type ConversaResumo, type SituacaoWhatsapp } from "@/lib/api";
@@ -33,15 +34,6 @@ export function BarraLateral() {
         : ["bg-amber-500", "Desconectado"];
 
   const nome = conta?.nome || conta?.email || "";
-  const iniciais =
-    nome
-      .split(/[\s@.]+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((parte) => parte[0])
-      .join("")
-      .toUpperCase() || "?";
-
   const sair = () => {
     limparSessao();
     router.replace("/login");
@@ -103,9 +95,7 @@ export function BarraLateral() {
         </div>
 
         <div className="mt-auto flex items-center gap-3 border-t border-zinc-800 pt-4">
-          <span className="grid size-10 shrink-0 place-items-center rounded-full bg-zinc-100 text-sm font-semibold text-zinc-900">
-            {iniciais}
-          </span>
+          <AvatarDoContato nome={nome} fotoUrl={whatsapp?.fotoUrl ?? null} />
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm font-semibold">{conta?.nome || "Conta"}</span>
             <span className="block truncate text-xs text-zinc-400">{conta?.email}</span>

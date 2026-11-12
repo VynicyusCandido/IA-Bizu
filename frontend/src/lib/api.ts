@@ -21,6 +21,8 @@ export type ConversaResumo = {
   ultimaOrigem: OrigemMensagem | null;
   /** Nome que o WhatsApp informa do contato, se houver. */
   nome: string | null;
+  /** Foto do contato no WhatsApp (URL https que expira; importar de novo renova). */
+  fotoUrl: string | null;
 };
 
 export type EstadoAssinatura = "ATIVA" | "AVISO" | "CARENCIA" | "VENCIDA";
@@ -43,6 +45,8 @@ export type SituacaoWhatsapp = {
   conectado: boolean;
   qrCodeBase64: string | null;
   codigoDeEmparelhamento: string | null;
+  /** Foto do perfil do corretor no WhatsApp, quando conectado. */
+  fotoUrl: string | null;
 };
 
 export class ErroApi extends Error {

@@ -3,7 +3,7 @@
 import { LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { AvatarDoContato } from "@/components/conversas/avatar-do-contato";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -13,12 +13,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { buscar, type Conta } from "@/lib/api";
+import { buscar, type Conta, type SituacaoWhatsapp } from "@/lib/api";
 import { limparSessao } from "@/lib/sessao";
 
 export function MenuDoUsuario() {
   const router = useRouter();
   const { data: conta } = useSWR<Conta>("/api/conta", buscar, { refreshInterval: 60000 });
+  const { data: whatsapp } = useSWR<SituacaoWhatsapp>("/api/whatsapp", buscar, { refreshInterval: 15000 });
   const nome = conta?.nome || conta?.email || "";
   const sair = () => {
     limparSessao();
@@ -28,9 +29,7 @@ export function MenuDoUsuario() {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon" aria-label="Menu da conta">
-          <Avatar size="sm">
-            <AvatarFallback>{(nome[0] ?? "?").toUpperCase()}</AvatarFallback>
-          </Avatar>
+          <AvatarDoContato size="sm" nome={nome} fotoUrl={whatsapp?.fotoUrl ?? null} />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-52">

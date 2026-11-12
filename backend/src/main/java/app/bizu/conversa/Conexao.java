@@ -6,10 +6,15 @@ public interface Conexao {
     /** Só consulta: o corretor ainda sem instância é "não conectado". Nunca cria nada nem pede QR. */
     boolean conectado(String corretorId);
 
+    /** Foto do perfil do próprio corretor no WhatsApp (https), ou nulo se não houver. Só para exibir. */
+    default String fotoDoCorretor(String corretorId) {
+        return null;
+    }
+
     /** Cria a instância do corretor na primeira vez e devolve o QR e o código de emparelhamento se faltar conectar. */
     Situacao conectar(String corretorId);
 
     /** Conectado, ou o QR (imagem em base64) e o código de emparelhamento para conectar o número. */
-    record Situacao(boolean conectado, String qrCodeBase64, String codigoDeEmparelhamento) {
+    record Situacao(boolean conectado, String qrCodeBase64, String codigoDeEmparelhamento, String fotoUrl) {
     }
 }

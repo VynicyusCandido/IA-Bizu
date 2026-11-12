@@ -13,7 +13,8 @@ public interface HistoricoDeConversas {
     List<ConversaImportada> desde(String corretorId, Instant desde);
 
     /** {@code salvo}: o contato está na agenda do corretor. */
-    record ConversaImportada(String identificador, String nome, boolean salvo, List<MensagemImportada> mensagens) {
+    record ConversaImportada(String identificador, String nome, String fotoUrl, boolean salvo,
+                             List<MensagemImportada> mensagens) {
     }
 
     /** {@code id} é o identificador da mensagem no WhatsApp: é ele que impede importar a mesma mensagem duas vezes. */
