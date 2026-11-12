@@ -92,7 +92,7 @@ class PainelApiIT {
 
                 @Override
                 public Situacao conectar(String corretorId) {
-                    return new Situacao(false, "data:image/png;base64,QR", "ABCD-1234");
+                    return new Situacao(false, "data:image/png;base64,QR", "ABCD-1234", null);
                 }
             };
         }

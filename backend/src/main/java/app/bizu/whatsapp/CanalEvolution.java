@@ -79,13 +79,29 @@ class CanalEvolution implements Canal, Conexao, HistoricoDoCorretor, HistoricoDe
     public Situacao conectar(String corretorId) {
         String instancia = garantirInstancia(corretorId);
         if (estaConectada(instancia)) {
-            return new Situacao(true, null, null);
+            return new Situacao(true, null, null, null);
         }
         JsonNode conexao = http.get().uri("/instance/connect/{instancia}", instancia)
                 .retrieve().body(JsonNode.class);
         return new Situacao(false,
                 conexao == null ? null : conexao.path("base64").asString(null),
-                conexao == null ? null : conexao.path("pairingCode").asString(null));
+                conexao == null ? null : conexao.path("pairingCode").asString(null), null);
+    }
+
+    /** Foto de perfil do dono da instância, como a Evolution guarda (fetchInstances). Falhar aqui nunca derruba o painel. */
+    @Override
+    public String fotoDoCorretor(String corretorId) {
+        try {
+            return instanciaDe(corretorId).map(instancia -> {
+                JsonNode lista = http.get().uri("/instance/fetchInstances?instanceName={i}", instancia)
+                        .retrieve().body(JsonNode.class);
+                String foto = lista != null && lista.isArray() && lista.size() > 0
+                        ? lista.get(0).path("profilePicUrl").asString("") : "";
+                return foto.startsWith("https://") ? foto : null;
+            }).orElse(null);
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     /** Só texto enviado pelo corretor em conversa individual. Formato a confirmar contra a instância real. */

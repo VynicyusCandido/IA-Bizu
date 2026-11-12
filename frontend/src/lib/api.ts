@@ -45,6 +45,8 @@ export type SituacaoWhatsapp = {
   conectado: boolean;
   qrCodeBase64: string | null;
   codigoDeEmparelhamento: string | null;
+  /** Foto do perfil do corretor no WhatsApp, quando conectado. */
+  fotoUrl: string | null;
 };
 
 export class ErroApi extends Error {
