@@ -10,6 +10,7 @@ import { ErroComRetentativa } from "@/components/painel/erro-com-retentativa";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AvatarDoContato } from "@/components/conversas/avatar-do-contato";
 import { buscar, importarConversas, type ConversaResumo } from "@/lib/api";
 import { ESTADOS, LIMITE_RESPOSTAS, previa, tempoRelativo, tituloDaConversa } from "@/lib/formatar";
 import { cn } from "@/lib/utils";
@@ -104,10 +105,12 @@ export function ListaDeConversas() {
                   href={`/conversas/${c.id}`}
                   aria-current={aberta === c.id ? "page" : undefined}
                   className={cn(
-                    "flex flex-col gap-1 rounded-lg px-3 py-2.5 transition-colors hover:bg-muted",
+                    "flex items-start gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-muted",
                     aberta === c.id && "bg-muted",
                   )}
                 >
+                  <AvatarDoContato nome={c.nome} fotoUrl={c.fotoUrl} />
+                  <div className="flex min-w-0 flex-1 flex-col gap-1">
                   <div className="flex items-baseline justify-between gap-2">
                     <span className="truncate text-sm font-medium">{tituloDaConversa(c.nome, c.telefone)}</span>
                     <span className="shrink-0 text-xs text-muted-foreground">{tempoRelativo(c.ultimaAtividadeEm)}</span>
@@ -123,6 +126,7 @@ export function ListaDeConversas() {
                         {c.respostasIa}/{LIMITE_RESPOSTAS}
                       </span>
                     )}
+                  </div>
                   </div>
                 </Link>
               </li>

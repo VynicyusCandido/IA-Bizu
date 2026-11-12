@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { buscar, ErroApi, type ConversaResumo, type Mensagem } from "@/lib/api";
+import { AvatarDoContato } from "@/components/conversas/avatar-do-contato";
 import { diaDaMensagem, ESTADOS, formatarTelefone, LIMITE_RESPOSTAS, tituloDaConversa } from "@/lib/formatar";
 import { cn } from "@/lib/utils";
 
@@ -80,6 +81,7 @@ export default function ConversaAberta() {
             <ArrowLeft />
           </Link>
         </Button>
+        {conversa && <AvatarDoContato nome={conversa.nome} fotoUrl={conversa.fotoUrl} />}
         <div className="min-w-0 flex-1">
           {conversa ? (
             <>

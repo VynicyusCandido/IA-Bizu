@@ -100,7 +100,7 @@ class PainelApiIT {
         @Bean
         @Primary
         HistoricoDeConversas historicoDeConversasFalso() {
-            return (corretorId, desde) -> List.of(new ConversaImportada("5511933332222", "Cliente Importado", false,
+            return (corretorId, desde) -> List.of(new ConversaImportada("5511933332222", "Cliente Importado", "https://pps.whatsapp.net/importado.jpg", false,
                     List.of(new MensagemImportada("IMP-1", false, "Oi, vi o anúncio", Instant.now().minusSeconds(7200)),
                             new MensagemImportada("IMP-2", false, "[áudio]", Instant.now().minusSeconds(3600)))));
         }
@@ -432,7 +432,8 @@ class PainelApiIT {
 
         HttpResponse<String> lista = chamar("GET", "/api/conversas", null, token);
         assertThat(lista.body()).contains("\"nome\":\"Cliente Importado\"").contains("5511933332222")
-                .contains("\"ultimaMensagem\":\"[áudio]\"");
+                .contains("\"ultimaMensagem\":\"[áudio]\"")
+                .contains("\"fotoUrl\":\"https://pps.whatsapp.net/importado.jpg\"");
         UUID id = jdbc.sql("select id from conversa").query(UUID.class).single();
         assertThat(chamar("GET", "/api/conversas/" + id + "/mensagens", null, token).body())
                 .contains("Oi, vi o anúncio").contains("[áudio]");

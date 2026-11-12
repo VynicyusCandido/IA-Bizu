@@ -186,8 +186,9 @@ class CanalEvolution implements Canal, Conexao, HistoricoDoCorretor, HistoricoDe
         if (mensagens.isEmpty()) {
             return Optional.empty();
         }
+        String foto = chat.path("profilePicUrl").asString("");
         return Optional.of(new ConversaImportada(telefone != null ? telefone : jid, nome,
-                chat.path("isSaved").asBoolean(false), mensagens));
+                foto.isBlank() ? null : foto, chat.path("isSaved").asBoolean(false), mensagens));
     }
 
     /** Texto para mostrar no painel; mídia vira um marcador ("[áudio]"). Tipos de bastidor (reação etc.) são ignorados. */
