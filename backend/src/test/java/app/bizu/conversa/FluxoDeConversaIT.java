@@ -60,17 +60,56 @@ class FluxoDeConversaIT {
     /** Roda dentro da chamada da IA: simula o que acontece enquanto o Claude ainda está pensando. */
     static volatile Runnable duranteOAgente;
 
+    /** Contatos @lid que a agenda do corretor diz estarem salvos; {@code agendaFora} simula o WhatsApp sem responder. */
+    static final java.util.Set<String> salvosNaAgenda = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    static volatile boolean agendaFora;
+    /** Quantas vezes pediram foto ao WhatsApp; {@code fotoFora} simula o WhatsApp falhando. */
+    static final java.util.concurrent.atomic.AtomicInteger pedidosDeFoto = new java.util.concurrent.atomic.AtomicInteger();
+    static volatile boolean fotoFora;
+
     @TestConfiguration
     static class Dublês {
+        @Bean
+        @Primary
+        FotoDoContato fotoFalsa() {
+            return (corretorId, identificador) -> {
+                pedidosDeFoto.incrementAndGet();
+                if (fotoFora) {
+                    throw new IllegalStateException("WhatsApp fora do ar");
+                }
+                return java.util.Optional.of("https://pps.whatsapp.net/" + identificador + ".jpg");
+            };
+        }
+
+        @Bean
+        @Primary
+        AgendaDoCorretor agendaFalsa() {
+            return (corretorId, identificador) -> {
+                if (agendaFora) {
+                    throw new IllegalStateException("WhatsApp fora do ar");
+                }
+                return salvosNaAgenda.contains(identificador);
+            };
+        }
+
         private final AtomicInteger ids = new AtomicInteger();
 
         @Bean
         @Primary
         Canal canalFalso() {
-            return (corretorId, telefone, texto) -> {
-                enviados.add(telefone + ":" + texto);
-                donosDosEnvios.add(corretorId);
-                return "WA-IA-" + ids.incrementAndGet();
+            return new Canal() {
+                @Override
+                public String enviar(String corretorId, String telefone, String texto) {
+                    enviados.add(telefone + ":" + texto);
+                    donosDosEnvios.add(corretorId);
+                    return "WA-IA-" + ids.incrementAndGet();
+                }
+
+                @Override
+                public String enviarMidia(String corretorId, String telefone, Midia midia) {
+                    enviados.add(telefone + ":" + midia.tipo() + ":" + midia.nome());
+                    return "WA-MIDIA-" + ids.incrementAndGet();
+                }
             };
         }
 
@@ -95,6 +134,10 @@ class FluxoDeConversaIT {
 
     @BeforeEach
     void limpar() {
+        salvosNaAgenda.clear();
+        pedidosDeFoto.set(0);
+        fotoFora = false;
+        agendaFora = false;
         jdbc.sql("delete from fila_mensagem").update();
         jdbc.sql("delete from lead").update();
         jdbc.sql("delete from mensagem").update();
@@ -459,18 +502,39 @@ class FluxoDeConversaIT {
     }
 
     @Test
-    void contatoSoComCodigoLidApareceComONomeMasAIANuncaResponde() {
-        assertThat(service.receberDoCliente(C1, "98765@lid", "Fulano", "Oi", "WA-1", T0)).isEqualTo(Resultado.REGISTRADA);
+    void desconhecidoSoComCodigoLidTemOMesmoAtendimentoDaIAQueQualquerClienteNovo() {
+        assertThat(service.receberDoCliente(C1, "98765@lid", "Fulano", "Oi", "WA-1", T0)).isEqualTo(Resultado.ENFILEIRADA);
 
-        while (processador.processarProxima(T0.plusSeconds(1))) {
-            // esvazia
-        }
+        processador.processarProxima(T0.plusSeconds(10));
 
-        assertThat(enviados).isEmpty();
+        assertThat(enviados).containsExactly("98765@lid:Resposta");
         assertThat(service.listar(C1)).singleElement().satisfies(r -> {
-            assertThat(r.estado()).isEqualTo(Estado.SEM_IA);
+            assertThat(r.estado()).isEqualTo(Estado.BOT);
             assertThat(r.nome()).isEqualTo("Fulano");
         });
+    }
+
+    @Test
+    void contatoLidSalvoNaAgendaApareceMasAIANuncaResponde() {
+        salvosNaAgenda.add("98765@lid");
+
+        assertThat(service.receberDoCliente(C1, "98765@lid", "Fulano", "Oi", "WA-1", T0)).isEqualTo(Resultado.REGISTRADA);
+        assertThat(processador.processarProxima(T0.plusSeconds(10))).isFalse();
+
+        assertThat(enviados).isEmpty();
+        assertThat(estado("98765@lid")).isEqualTo("SEM_IA");
+        assertThat(jdbc.sql("select motivo from contato_ignorado where telefone = '98765@lid'")
+                .query(String.class).single()).isEqualTo("AGENDA");
+    }
+
+    @Test
+    void semConseguirPerguntarAAgendaContatoLidFicaSemIA() {
+        agendaFora = true;
+
+        assertThat(service.receberDoCliente(C1, "98765@lid", "Fulano", "Oi", "WA-1", T0)).isEqualTo(Resultado.REGISTRADA);
+
+        assertThat(estado("98765@lid")).isEqualTo("SEM_IA");
+        assertThat(enviados).isEmpty();
     }
 
     @Test
@@ -485,14 +549,18 @@ class FluxoDeConversaIT {
     }
 
     @Test
-    void corretorNaoAssumeNemDevolveConversaSemIA() {
+    void corretorNaoAssumeConversaSemIAMasPodeLigarAIA() {
         service.marcarContatosSalvos(C1, List.of(new ContatoSalvo(CLIENTE, null)), T0);
         service.receberDoCliente(C1, CLIENTE, "Oi", "WA-1", T0);
         UUID id = jdbc.sql("select id from conversa").query(UUID.class).single();
 
         assertThat(service.assumir(C1, id, T0)).isEmpty();
-        assertThat(service.devolver(C1, id, T0)).isEmpty();
         assertThat(estado(CLIENTE)).isEqualTo("SEM_IA");
+
+        assertThat(service.devolver(C1, id, T0)).isPresent();
+        assertThat(estado(CLIENTE)).isEqualTo("BOT");
+        assertThat(service.receberDoCliente(C1, CLIENTE, "Oi de novo", "WA-2", T0.plusSeconds(1)))
+                .isEqualTo(Resultado.ENFILEIRADA);
     }
 
     private static List<ConversaImportada> historicoDaSemana() {
@@ -509,7 +577,7 @@ class FluxoDeConversaIT {
                 // contato salvo: aparece, sem IA
                 new ConversaImportada("5511900000003", "Mãe", null, true,
                         List.of(new MensagemImportada("H-5", false, "Bom dia", ontem))),
-                // só código do WhatsApp, sem telefone: aparece, sem IA
+                // só código do WhatsApp, sem telefone e não salvo: é cliente novo, fica com a IA
                 new ConversaImportada("55555@lid", "Sem Número", null, false,
                         List.of(new MensagemImportada("H-6", false, "Oi", ontem))));
     }
@@ -524,7 +592,7 @@ class FluxoDeConversaIT {
         assertThat(estado("5511900000001")).isEqualTo("BOT");
         assertThat(estado("5511900000002")).isEqualTo("HUMANO");
         assertThat(estado("5511900000003")).isEqualTo("SEM_IA");
-        assertThat(estado("55555@lid")).isEqualTo("SEM_IA");
+        assertThat(estado("55555@lid")).isEqualTo("BOT");
         assertThat(jdbc.sql("select motivo from contato_ignorado where telefone = '5511900000003'")
                 .query(String.class).single()).isEqualTo("AGENDA");
         assertThat(jdbc.sql("select motivo from contato_ignorado where telefone = '5511900000002'")
@@ -562,6 +630,86 @@ class FluxoDeConversaIT {
         processador.processarProxima(T0.plusSeconds(20));
 
         assertThat(enviados).hasSize(1);
+    }
+
+    @Test
+    void importarNaoTrataRespostaDaIaComoSeFosseOCorretor() {
+        service.receberDoCliente(C1, CLIENTE, "Oi", "WA-1", T0);
+        processador.processarProxima(T0.plusSeconds(10));
+        String idDaIa = jdbc.sql("select wa_message_id from mensagem where origem = 'IA'").query(String.class).single();
+        var historico = List.of(new ConversaImportada(CLIENTE, null, null, false, List.of(
+                new MensagemImportada("WA-1", false, "Oi", T0),
+                new MensagemImportada(idDaIa, true, "resposta da IA", T0.plusSeconds(10)))));
+
+        service.importar(C1, historico, T0.plusSeconds(20));
+
+        assertThat(jdbc.sql("select count(*) from contato_ignorado").query(Integer.class).single()).isZero();
+        assertThat(estado(CLIENTE)).isEqualTo("BOT");
+    }
+
+    @Test
+    void responderPeloPainelAssumeAConversaMasNaoTiraOSemIaENaoDuplicaOEco() {
+        salvosNaAgenda.add("55555@lid");
+        service.receberDoCliente(C1, CLIENTE, "Oi", "WA-1", T0);
+        service.receberDoCliente(C1, "55555@lid", "Oi", "WA-2", T0);
+        UUID bot = jdbc.sql("select id from conversa where telefone = :t").param("t", CLIENTE).query(UUID.class).single();
+        UUID semIa = jdbc.sql("select id from conversa where telefone = '55555@lid'").query(UUID.class).single();
+
+        assertThat(service.responder(C1, bot, "Olá!", T0.plusSeconds(5))).isPresent();
+        assertThat(service.responder(C1, semIa, "Olá, amigo", T0.plusSeconds(6))).isPresent();
+
+        assertThat(estado(CLIENTE)).isEqualTo("HUMANO");
+        assertThat(estado("55555@lid")).isEqualTo("SEM_IA");
+        assertThat(jdbc.sql("select motivo from contato_ignorado where telefone = :t").param("t", CLIENTE)
+                .query(String.class).single()).isEqualTo("ESCRITA_MANUAL");
+        // o webhook devolve a própria mensagem enviada: já tem o ID gravado, então é eco
+        String waId = jdbc.sql("select wa_message_id from mensagem where texto = 'Olá!'").query(String.class).single();
+        assertThat(service.receberDoCorretor(C1, CLIENTE, "Olá!", waId, T0.plusSeconds(7))).isEqualTo(Resultado.ECO);
+        assertThat(service.responder("outro-corretor", bot, "intruso", T0.plusSeconds(8))).isEmpty();
+    }
+
+    @Test
+    void conversaRecemCriadaGanhaAFotoDoContatoUmaVezSoENuncaFalhaPorCausaDela() {
+        service.receberDoCliente(C1, CLIENTE, "Oi", "WA-1", T0);
+
+        service.completarFoto(C1, CLIENTE);
+        service.completarFoto(C1, CLIENTE);
+
+        assertThat(service.listar(C1)).singleElement()
+                .satisfies(r -> assertThat(r.fotoUrl()).isEqualTo("https://pps.whatsapp.net/" + CLIENTE + ".jpg"));
+        assertThat(pedidosDeFoto.get()).isEqualTo(1);
+
+        // conversa que já tem mais de uma mensagem não pede foto de novo; falha do WhatsApp não propaga
+        service.receberDoCliente(C1, "5511900001111", "Oi", "WA-F1", T0);
+        service.receberDoCliente(C1, "5511900001111", "Tem foto?", "WA-F2", T0.plusSeconds(1));
+        service.completarFoto(C1, "5511900001111");
+        assertThat(pedidosDeFoto.get()).isEqualTo(1);
+
+        fotoFora = true;
+        service.receberDoCliente(C1, "5511900002222", "Oi", "WA-F3", T0);
+        service.completarFoto(C1, "5511900002222");
+        assertThat(service.listar(C1)).filteredOn(r -> r.telefone().equals("5511900002222"))
+                .extracting(r -> r.fotoUrl()).containsOnlyNulls();
+    }
+
+    @Test
+    void anexoDoPainelGravaMarcadorAssumeAConversaENaoDuplicaOEco() {
+        service.receberDoCliente(C1, CLIENTE, "Oi", "WA-1", T0);
+        UUID id = jdbc.sql("select id from conversa").query(UUID.class).single();
+        var foto = new Canal.Midia("image", "image/jpeg", "casa.jpg", new byte[] {1, 2, 3}, "  Fachada  ");
+        var contrato = new Canal.Midia("document", "application/pdf", "contrato.pdf", new byte[] {1}, null);
+
+        assertThat(service.responderComAnexo(C1, id, foto, T0.plusSeconds(5))).isPresent();
+        assertThat(service.responderComAnexo(C1, id, contrato, T0.plusSeconds(6))).isPresent();
+        assertThat(service.responderComAnexo("outro-corretor", id, foto, T0.plusSeconds(7))).isEmpty();
+
+        assertThat(enviados).containsExactly(CLIENTE + ":image:casa.jpg", CLIENTE + ":document:contrato.pdf");
+        assertThat(estado(CLIENTE)).isEqualTo("HUMANO");
+        assertThat(service.mensagens(C1, id).orElseThrow()).extracting(m -> m.texto())
+                .containsExactly("Oi", "[imagem] Fachada", "[documento] contrato.pdf");
+        String waId = jdbc.sql("select wa_message_id from mensagem where texto = '[imagem] Fachada'")
+                .query(String.class).single();
+        assertThat(service.receberDoCorretor(C1, CLIENTE, "[imagem]", waId, T0.plusSeconds(8))).isEqualTo(Resultado.ECO);
     }
 
     private int respostasIa(String telefone) {

@@ -24,12 +24,12 @@ public class ConversaService {
     /**
      * Linha do painel: a conversa, o que a IA descobriu do cliente e a prévia da última mensagem
      * (até 120 caracteres; {@code ultimaOrigem} é CLIENTE, IA ou CORRETOR). {@code nome} é o nome do contato, se
-     * o WhatsApp informou; {@code fotoUrl}, a foto dele (https), se houver.
+     * o WhatsApp informou; {@code fotoUrl}, a foto dele (https), se houver; {@code naoLidas}, quantas mensagens do cliente o corretor ainda não leu no painel.
      */
     public record ConversaResumo(UUID id, String telefone, Estado estado, int respostasIa, Instant ultimaAtividadeEm,
                                  String finalidade, String regiao, String faixaValor, String prazo,
                                  String imovelCitado, String ultimaMensagem, String ultimaOrigem, String nome,
-                                 String fotoUrl) {
+                                 String fotoUrl, int naoLidas) {
     }
 
     /** Uma mensagem do histórico mostrado no painel; {@code origem} é CLIENTE, IA ou CORRETOR. */
@@ -51,14 +51,21 @@ public class ConversaService {
     private final FilaRepository fila;
     private final ContatoIgnoradoRepository contatos;
     private final ConversaProperties props;
+    private final Canal canal;
+    private final AgendaDoCorretor agenda;
+    private final FotoDoContato fotos;
 
     ConversaService(ConversaRepository conversas, MensagemRepository mensagens, FilaRepository fila,
-                    ContatoIgnoradoRepository contatos, ConversaProperties props) {
+                    ContatoIgnoradoRepository contatos, ConversaProperties props, Canal canal,
+                    AgendaDoCorretor agenda, FotoDoContato fotos) {
         this.conversas = conversas;
         this.mensagens = mensagens;
         this.fila = fila;
         this.contatos = contatos;
         this.props = props;
+        this.canal = canal;
+        this.agenda = agenda;
+        this.fotos = fotos;
     }
 
     public Resultado receberDoCliente(String corretorId, String telefone, String texto, String waMessageId,
@@ -80,7 +87,7 @@ public class ConversaService {
             conversa = atual.get();
         } else {
             atual.ifPresent(velha -> conversas.atualizar(velha.desativada()));
-            conversa = Conversa.nova(corretorId, telefone, estadoInicial(corretorId, telefone), agora);
+            conversa = Conversa.nova(corretorId, telefone, estadoInicial(corretorId, telefone, agora), agora);
             conversas.inserir(conversa);
         }
 
@@ -117,7 +124,7 @@ public class ConversaService {
             return Resultado.ECO;
         }
 
-        boolean semIa = telefone.endsWith(SUFIXO_LID) || contatos.motivo(corretorId, telefone).filter(m -> m == Motivo.AGENDA).isPresent();
+        boolean semIa = salvoNaAgenda(corretorId, telefone, agora);
         if (!semIa) {
             contatos.marcar(corretorId, telefone, Motivo.ESCRITA_MANUAL, null, agora);
         }
@@ -133,15 +140,87 @@ public class ConversaService {
         return Resultado.ASSUMIDA;
     }
 
+    /**
+     * Busca a foto de uma conversa que acabou de nascer (só tem a primeira mensagem) e ainda não tem foto. Chamada
+     * depois do commit e fora de qualquer transação, porque o WhatsApp pode demorar; nunca lança exceção, pois a
+     * foto é só enfeite. Conversas importadas ganham a foto na importação.
+     */
+    public void completarFoto(String corretorId, String telefone) {
+        try {
+            conversas.semFotoRecemCriada(corretorId, telefone).ifPresent(id ->
+                    fotos.de(corretorId, telefone).ifPresent(url -> conversas.atualizarFoto(id, url)));
+        } catch (RuntimeException e) {
+            // sem foto por enquanto: a próxima importação tenta de novo
+        }
+    }
+
     @Transactional(readOnly = true)
     public List<ConversaResumo> listar(String corretorId) {
         return conversas.listarResumos(corretorId);
+    }
+
+    /**
+     * O corretor viu a conversa até {@code ate} (a data da última mensagem que o painel mostrou). Nunca volta atrás e
+     * nunca passa de agora. Falso se a conversa não existe ou não é dele.
+     */
+    @Transactional
+    public boolean marcarLida(String corretorId, UUID id, Instant ate, Instant agora) {
+        return conversas.marcarLida(corretorId, id, ate.isAfter(agora) ? agora : ate);
     }
 
     /** Histórico da conversa; vazio se ela não existe. */
     @Transactional(readOnly = true)
     public Optional<List<MensagemDaConversa>> mensagens(String corretorId, UUID id) {
         return conversas.buscar(corretorId, id).map(c -> mensagens.listar(id));
+    }
+
+    /**
+     * O corretor responde pelo painel: envia pelo WhatsApp dele e grava. Com a IA na conversa, ele assume (a IA para);
+     * contato salvo ou sem telefone continua SEM_IA. Vazio se a conversa não existe, não é dele ou não está ativa.
+     * Falha do WhatsApp lança {@link EnvioRecusadoException} e não grava nada. shortcut: o envio acontece dentro da
+     * transação, com a conversa travada, para o eco do webhook esperar o ID gravado; custa uma conexão do banco
+     * até o timeout da Evolution (30 s) no pior caso.
+     */
+    @Transactional
+    public Optional<Conversa> responder(String corretorId, UUID id, String texto, Instant agora) {
+        return enviarDoPainel(corretorId, id, texto, c -> canal.enviar(corretorId, c.telefone(), texto), agora);
+    }
+
+    /**
+     * Igual a {@link #responder}, mas com um anexo (imagem, vídeo ou documento) e legenda opcional. No histórico a
+     * mensagem aparece como marcador, no mesmo formato da importação ("[imagem] legenda", "[documento] nome.pdf").
+     */
+    @Transactional
+    public Optional<Conversa> responderComAnexo(String corretorId, UUID id, Canal.Midia midia, Instant agora) {
+        String legenda = midia.legenda() == null ? "" : midia.legenda().strip();
+        String marcador = switch (midia.tipo()) {
+            case "image" -> "[imagem]";
+            case "video" -> "[vídeo]";
+            default -> "[documento]";
+        };
+        String detalhe = !legenda.isEmpty() ? legenda : "document".equals(midia.tipo()) ? midia.nome() : "";
+        String texto = detalhe.isEmpty() ? marcador : marcador + " " + detalhe;
+        return enviarDoPainel(corretorId, id, texto, c -> canal.enviarMidia(corretorId, c.telefone(), midia), agora);
+    }
+
+    private Optional<Conversa> enviarDoPainel(String corretorId, UUID id, String texto,
+                                              java.util.function.Function<Conversa, String> envio, Instant agora) {
+        return conversas.buscarParaAtualizar(corretorId, id).filter(Conversa::ativa).map(conversa -> {
+            String waId;
+            try {
+                waId = envio.apply(conversa);
+            } catch (RuntimeException e) {
+                throw new EnvioRecusadoException(e);
+            }
+            mensagens.inserir(UUID.randomUUID(), conversa.id(), Direcao.SAIDA, Origem.CORRETOR, texto, waId, agora);
+            boolean semIa = conversa.estado() == Estado.SEM_IA;
+            if (!semIa) {
+                contatos.marcar(corretorId, conversa.telefone(), Motivo.ESCRITA_MANUAL, null, agora);
+            }
+            Conversa atualizada = semIa ? conversa.comAtividade(agora) : conversa.assumida(agora);
+            conversas.atualizar(atualizada);
+            return atualizada;
+        });
     }
 
     /** O corretor assume pelo painel: a IA para de responder. Vazio se a conversa não existe, não é dele, não está ativa ou nunca teve IA. */
@@ -155,12 +234,15 @@ public class ConversaService {
                 });
     }
 
-    /** O corretor devolve à IA. Só age em conversa assumida; se o limite de respostas já foi atingido, encerra. */
+    /**
+     * O corretor liga a IA na conversa: age em conversa assumida ou sem IA (a escolha dele vale até sobre contato
+     * salvo); se o limite de respostas já foi atingido, encerra.
+     */
     @Transactional
     public Optional<Conversa> devolver(String corretorId, UUID id, Instant agora) {
         return conversas.buscarParaAtualizar(corretorId, id).filter(Conversa::ativa)
-                .filter(c -> c.estado() != Estado.SEM_IA).map(conversa -> {
-                    if (conversa.estado() != Estado.HUMANO) {
+                .map(conversa -> {
+                    if (conversa.estado() != Estado.HUMANO && conversa.estado() != Estado.SEM_IA) {
                         return conversa;
                     }
                     Conversa devolvida = conversa.devolvida(props.limiteRespostas(), agora);
@@ -195,17 +277,18 @@ public class ConversaService {
                 continue;
             }
             String id = chat.identificador();
-            boolean semTelefone = id.endsWith(SUFIXO_LID);
-            boolean corretorFalou = ordenadas.stream().anyMatch(MensagemImportada::doCorretor);
+            // Resposta que a própria IA enviou também volta do WhatsApp como "minha": só vale o que o corretor escreveu.
+            boolean corretorFalou = ordenadas.stream()
+                    .anyMatch(m -> m.doCorretor() && !mensagens.existeSaidaIaPorWaId(m.id()));
             Instant ultima = ordenadas.get(ordenadas.size() - 1).em();
 
-            if (!semTelefone && chat.salvo()) {
+            if (chat.salvo()) {
                 contatos.marcar(corretorId, id, Motivo.AGENDA, chat.nome(), agora);
-            } else if (!semTelefone && corretorFalou) {
+            } else if (corretorFalou) {
                 contatos.marcar(corretorId, id, Motivo.ESCRITA_MANUAL, null, agora);
             }
             Optional<Motivo> motivo = contatos.motivo(corretorId, id);
-            Estado estado = semTelefone || chat.salvo() || motivo.filter(m -> m == Motivo.AGENDA).isPresent()
+            Estado estado = chat.salvo() || motivo.filter(m -> m == Motivo.AGENDA).isPresent()
                     ? Estado.SEM_IA
                     : (corretorFalou || motivo.isPresent() ? Estado.HUMANO : Estado.BOT);
 
@@ -233,6 +316,10 @@ public class ConversaService {
             }
             conversas.atualizarNome(conversa.id(), chat.nome());
             conversas.atualizarFoto(conversa.id(), chat.fotoUrl());
+            if (existente.isEmpty()) {
+                // Histórico importado já é passado: não nasce como "não lido".
+                conversas.marcarLida(corretorId, conversa.id(), ultima);
+            }
             totalConversas++;
         }
         return new ResumoDaImportacao(totalConversas, totalMensagens);
@@ -243,11 +330,34 @@ public class ConversaService {
     }
 
     /** Estado de uma conversa que nasce agora com mensagem de cliente. */
-    private Estado estadoInicial(String corretorId, String telefone) {
+    private Estado estadoInicial(String corretorId, String telefone, Instant agora) {
         Optional<Motivo> motivo = contatos.motivo(corretorId, telefone);
         if (motivo.isPresent()) {
             return motivo.get() == Motivo.AGENDA ? Estado.SEM_IA : Estado.HUMANO;
         }
-        return telefone.endsWith(SUFIXO_LID) ? Estado.SEM_IA : Estado.BOT;
+        return salvoNaAgenda(corretorId, telefone, agora) ? Estado.SEM_IA : Estado.BOT;
+    }
+
+    /**
+     * Contato salvo na agenda (a IA nunca atende). Contato só com código (@lid) não chega pelo evento de contatos a
+     * tempo, então pergunta ao WhatsApp e guarda a resposta. Sem conseguir perguntar, trata como salvo: errar para
+     * este lado só deixa de responder, nunca responde a quem não devia.
+     */
+    private boolean salvoNaAgenda(String corretorId, String telefone, Instant agora) {
+        if (contatos.motivo(corretorId, telefone).filter(m -> m == Motivo.AGENDA).isPresent()) {
+            return true;
+        }
+        if (!telefone.endsWith(SUFIXO_LID)) {
+            return false;
+        }
+        try {
+            if (!agenda.salvo(corretorId, telefone)) {
+                return false;
+            }
+        } catch (RuntimeException e) {
+            return true;
+        }
+        contatos.marcar(corretorId, telefone, Motivo.AGENDA, null, agora);
+        return true;
     }
 }

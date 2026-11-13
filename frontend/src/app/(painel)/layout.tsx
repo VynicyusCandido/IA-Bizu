@@ -40,7 +40,9 @@ export default function LayoutDoPainel({ children }: { children: React.ReactNode
           </Link>
           <div className="flex items-center gap-1">
             <EstadoWhatsapp className="md:hidden" />
-            <AlternarTema />
+            <div className="md:hidden">
+              <AlternarTema />
+            </div>
             <div className="md:hidden">
               <MenuDoUsuario />
             </div>

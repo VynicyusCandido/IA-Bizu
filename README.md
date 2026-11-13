@@ -111,7 +111,10 @@ O painel mostra **toda conversa individual** do WhatsApp do corretor (grupos nã
 | Número novo, que o corretor nunca atendeu | IA respondendo | sim |
 | Número que o corretor atendeu ou assumiu | Com você | não, até ele devolver |
 | Contato salvo na agenda | IA não atende | nunca |
-| Contato que o WhatsApp só identifica por código (`@lid`), sem telefone | IA não atende | nunca (por enquanto) |
+| Contato que o WhatsApp só identifica por código (`@lid`), sem telefone e fora da agenda | IA respondendo | sim, como qualquer cliente novo |
+| Contato `@lid` na agenda, ou que o Bizu não conseguiu consultar na agenda | IA não atende | nunca |
+
+O corretor também responde pelo painel (caixa de texto no fim da conversa). Enviar assume a conversa se a IA estava nela; contato salvo continua sem IA.
 
 Para trazer o que já existia, use o botão de histórico (ícone de relógio) no topo da lista de Conversas, ou "Importar a última semana" quando a lista está vazia. A importação lê o que a Evolution guardou, mantém a data original de cada mensagem, mostra mídia como marcador (`[áudio]`, `[imagem]`...) e **nunca faz a IA responder retroativamente**.
 

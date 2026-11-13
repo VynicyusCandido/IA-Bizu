@@ -2,7 +2,7 @@ import { lerSessao, limparSessao, salvarSessao } from "@/lib/sessao";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
 
-/** SEM_IA: aparece no painel, mas a IA nunca atende (contato salvo ou contato sem número conhecido). */
+/** SEM_IA: aparece no painel, mas a IA nunca atende (contato salvo na agenda do corretor). */
 export type EstadoConversa = "BOT" | "HUMANO" | "ENCERRADA" | "SEM_IA";
 export type OrigemMensagem = "CLIENTE" | "IA" | "CORRETOR";
 
@@ -23,6 +23,8 @@ export type ConversaResumo = {
   nome: string | null;
   /** Foto do contato no WhatsApp (URL https que expira; importar de novo renova). */
   fotoUrl: string | null;
+  /** Mensagens do cliente que o corretor ainda não viu no painel. */
+  naoLidas: number;
 };
 
 export type EstadoAssinatura = "ATIVA" | "AVISO" | "CARENCIA" | "VENCIDA";
@@ -61,7 +63,8 @@ export async function chamar<T>(caminho: string, init?: RequestInit): Promise<T>
   const resposta = await fetch(`${API_URL}${caminho}`, {
     ...init,
     headers: {
-      "Content-Type": "application/json",
+      // Com FormData o navegador define o tipo (com o limite do multipart); não pode ser sobrescrito.
+      ...(init?.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
       ...(sessao ? { Authorization: `Bearer ${sessao.token}` } : {}),
     },
   });
@@ -84,6 +87,22 @@ export const conectarWhatsapp = () => chamar<SituacaoWhatsapp>("/api/whatsapp/co
 /** Traz as conversas da última semana que já existiam no WhatsApp. Pode repetir: não duplica nada. */
 export const importarConversas = () =>
   chamar<{ conversas: number; mensagens: number }>("/api/conversas/importar", { method: "POST" });
+
+/** Envia uma resposta pelo WhatsApp do corretor. Com a IA na conversa, ele assume (a IA para). */
+export const responderConversa = (id: string, texto: string) =>
+  chamar(`/api/conversas/${id}/mensagens`, { method: "POST", body: JSON.stringify({ texto }) });
+
+/** Envia um arquivo (imagem, vídeo ou documento, até 10 MB) com legenda opcional. */
+export const enviarAnexo = (id: string, arquivo: File, legenda: string) => {
+  const dados = new FormData();
+  dados.append("arquivo", arquivo);
+  if (legenda) dados.append("legenda", legenda);
+  return chamar(`/api/conversas/${id}/anexos`, { method: "POST", body: dados });
+};
+
+/** Avisa que o painel mostrou a conversa até essa data (a da última mensagem vista). */
+export const marcarComoLida = (id: string, ate: string) =>
+  chamar(`/api/conversas/${id}/lida`, { method: "POST", body: JSON.stringify({ ate }) });
 
 export const assumirConversa = (id: string) => chamar(`/api/conversas/${id}/assumir`, { method: "POST" });
 export const devolverConversa = (id: string) => chamar(`/api/conversas/${id}/devolver`, { method: "POST" });

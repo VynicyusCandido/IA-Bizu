@@ -1,6 +1,6 @@
 "use client";
 
-import { History, Loader2, MessageSquare } from "lucide-react";
+import { History, Loader2, MessageSquare, Search } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
@@ -8,12 +8,19 @@ import { toast } from "sonner";
 import useSWR from "swr";
 import { ErroComRetentativa } from "@/components/painel/erro-com-retentativa";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AvatarDoContato } from "@/components/conversas/avatar-do-contato";
-import { buscar, importarConversas, type ConversaResumo } from "@/lib/api";
+import { buscar, ErroApi, importarConversas, type ConversaResumo } from "@/lib/api";
 import { ESTADOS, LIMITE_RESPOSTAS, previa, tempoRelativo, tituloDaConversa } from "@/lib/formatar";
 import { cn } from "@/lib/utils";
+
+/** A aba escolhida leva a cor de marca. */
+const ABA = "data-active:bg-primary data-active:text-primary-foreground dark:data-active:border-primary dark:data-active:bg-primary dark:data-active:text-primary-foreground";
+
+const semAcento = (texto: string) =>
+  texto.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
 
 type Filtro = "todas" | "HUMANO" | "BOT" | "SEM_IA";
 
@@ -22,7 +29,15 @@ export function ListaDeConversas() {
   const [filtro, setFiltro] = useState<Filtro>("todas");
   const { data, error, mutate } = useSWR<ConversaResumo[]>("/api/conversas", buscar, { refreshInterval: 5000 });
 
-  const visiveis = data?.filter((c) => filtro === "todas" || c.estado === filtro);
+  const [busca, setBusca] = useState("");
+  const termo = semAcento(busca.trim());
+
+  // A busca olha o nome, o telefone e a última mensagem, sem diferenciar maiúsculas nem acentos.
+  const visiveis = data?.filter(
+    (c) =>
+      (filtro === "todas" || c.estado === filtro) &&
+      (!termo || semAcento(`${c.nome ?? ""} ${c.telefone} ${c.ultimaMensagem ?? ""}`).includes(termo)),
+  );
   const [importando, setImportando] = useState(false);
 
   async function importar() {
@@ -33,8 +48,12 @@ export function ListaDeConversas() {
       toast.success(
         mensagens === 0 ? "Nada de novo para importar." : `${mensagens} mensagens de ${conversas} conversas importadas.`,
       );
-    } catch {
-      toast.error("Não consegui importar. Confira se o WhatsApp está conectado.");
+    } catch (erro) {
+      toast.error(
+        erro instanceof ErroApi && erro.status === 409
+          ? "Já tem uma importação em andamento. Aguarde terminar."
+          : "Não consegui importar. Confira se o WhatsApp está conectado.",
+      );
     } finally {
       setImportando(false);
     }
@@ -58,12 +77,27 @@ export function ListaDeConversas() {
         </div>
         <Tabs value={filtro} onValueChange={(v) => setFiltro(v as Filtro)}>
           <TabsList className="w-full">
-            <TabsTrigger value="todas">Todas</TabsTrigger>
-            <TabsTrigger value="HUMANO">Com você</TabsTrigger>
-            <TabsTrigger value="BOT">IA</TabsTrigger>
-            <TabsTrigger value="SEM_IA">Sem IA</TabsTrigger>
+            <TabsTrigger value="todas" className={ABA}>Todas</TabsTrigger>
+            <TabsTrigger value="HUMANO" className={ABA}>Com você</TabsTrigger>
+            <TabsTrigger value="BOT" className={ABA}>IA</TabsTrigger>
+            <TabsTrigger value="SEM_IA" className={ABA}>Sem IA</TabsTrigger>
           </TabsList>
         </Tabs>
+      </div>
+
+      <div className="relative border-b px-4 py-2.5">
+        <Search
+          className="pointer-events-none absolute left-7 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+          aria-hidden
+        />
+        <Input
+          type="search"
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          placeholder="Buscar conversa"
+          aria-label="Buscar conversa"
+          className="h-9 pl-8"
+        />
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -84,10 +118,14 @@ export function ListaDeConversas() {
         ) : visiveis.length === 0 ? (
           <div className="flex flex-col items-center gap-2 px-6 py-16 text-center">
             <MessageSquare className="size-8 text-muted-foreground" aria-hidden />
-            <p className="font-medium">{data?.length ? "Nenhuma conversa neste filtro" : "Nenhuma conversa ainda"}</p>
+            <p className="font-medium">
+              {!data?.length ? "Nenhuma conversa ainda" : termo ? "Nenhuma conversa encontrada" : "Nenhuma conversa neste filtro"}
+            </p>
             <p className="text-sm text-muted-foreground">
               {data?.length
-                ? "Troque o filtro para ver as outras."
+                ? termo
+                  ? "Tente outro nome, número ou trecho da mensagem."
+                  : "Troque o filtro para ver as outras."
                 : "Quando um cliente novo escrever no seu WhatsApp, a conversa aparece aqui."}
             </p>
             {!data?.length && (
@@ -106,16 +144,29 @@ export function ListaDeConversas() {
                   aria-current={aberta === c.id ? "page" : undefined}
                   className={cn(
                     "flex items-start gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-muted",
-                    aberta === c.id && "bg-muted",
+                    aberta === c.id && "bg-muted shadow-[inset_3px_0_0_var(--primary)]",
                   )}
                 >
                   <AvatarDoContato nome={c.nome} fotoUrl={c.fotoUrl} />
                   <div className="flex min-w-0 flex-1 flex-col gap-1">
                   <div className="flex items-baseline justify-between gap-2">
-                    <span className="truncate text-sm font-medium">{tituloDaConversa(c.nome, c.telefone)}</span>
+                    <span className={cn("truncate text-sm", c.naoLidas > 0 ? "font-semibold" : "font-medium")}>
+                      {tituloDaConversa(c.nome, c.telefone)}
+                    </span>
                     <span className="shrink-0 text-xs text-muted-foreground">{tempoRelativo(c.ultimaAtividadeEm)}</span>
                   </div>
-                  <p className="truncate text-sm text-muted-foreground">{previa(c.ultimaMensagem, c.ultimaOrigem)}</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="truncate text-sm text-muted-foreground">{previa(c.ultimaMensagem, c.ultimaOrigem)}</p>
+                    {c.naoLidas > 0 && (
+                      <span
+                        title={`${c.naoLidas} não lidas`}
+                        className="flex shrink-0 items-center gap-1 rounded-md bg-primary px-1.5 py-0.5 text-xs font-semibold text-primary-foreground"
+                      >
+                        <MessageSquare className="size-3" aria-hidden />
+                        {c.naoLidas}
+                      </span>
+                    )}
+                  </div>
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
                     <span className="flex items-center gap-1.5">
                       <span className={cn("size-2 rounded-full", ESTADOS[c.estado].ponto)} aria-hidden />
