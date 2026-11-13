@@ -62,8 +62,36 @@ class PainelApiIT {
     @ServiceConnection
     static PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:17");
 
+    /** O que o corretor mandou pelo painel; {@code recusar} simula o WhatsApp recusando o envio. */
+    static final java.util.List<String> enviadosPeloPainel = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+    static volatile boolean recusar;
+
     @TestConfiguration
     static class Dublês {
+        @Bean
+        @Primary
+        app.bizu.conversa.Canal canalFalso() {
+            return new app.bizu.conversa.Canal() {
+                @Override
+                public String enviar(String corretorId, String telefone, String texto) {
+                    if (recusar) {
+                        throw new IllegalStateException("WhatsApp recusou");
+                    }
+                    enviadosPeloPainel.add(corretorId + ":" + telefone + ":" + texto);
+                    return "WA-PAINEL-" + enviadosPeloPainel.size();
+                }
+
+                @Override
+                public String enviarMidia(String corretorId, String telefone, Midia midia) {
+                    if (recusar) {
+                        throw new IllegalStateException("WhatsApp recusou");
+                    }
+                    enviadosPeloPainel.add(corretorId + ":" + telefone + ":" + midia.tipo() + ":" + midia.nome());
+                    return "WA-PAINEL-" + enviadosPeloPainel.size();
+                }
+            };
+        }
+
         @Bean
         @Primary
         VerificadorGoogle googleFalso() {
@@ -433,12 +461,140 @@ class PainelApiIT {
         HttpResponse<String> lista = chamar("GET", "/api/conversas", null, token);
         assertThat(lista.body()).contains("\"nome\":\"Cliente Importado\"").contains("5511933332222")
                 .contains("\"ultimaMensagem\":\"[áudio]\"")
-                .contains("\"fotoUrl\":\"https://pps.whatsapp.net/importado.jpg\"");
+                .contains("\"fotoUrl\":\"https://pps.whatsapp.net/importado.jpg\"").contains("\"naoLidas\":0");
         UUID id = jdbc.sql("select id from conversa").query(UUID.class).single();
         assertThat(chamar("GET", "/api/conversas/" + id + "/mensagens", null, token).body())
                 .contains("Oi, vi o anúncio").contains("[áudio]");
 
         assertThat(chamar("POST", "/api/conversas/importar", null, token).body()).contains("\"mensagens\":0");
+    }
+
+    @Test
+    void importarSimultaneoDoMesmoCorretorRecusaASegundaComConflito() throws Exception {
+        String token = sessao();
+        var primeira = java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+            try {
+                return chamar("POST", "/api/conversas/importar", null, token).statusCode();
+            } catch (Exception e) {
+                throw new IllegalStateException(e);
+            }
+        });
+        var segunda = chamar("POST", "/api/conversas/importar", null, token).statusCode();
+
+        // Nunca erro de banco: ou rodaram uma depois da outra (200 e 200) ou a segunda foi recusada (409).
+        assertThat(java.util.List.of(primeira.get(), segunda)).allMatch(s -> s == 200 || s == 409);
+    }
+
+    @Test
+    void corretorResponderPeloPainelEnviaGravaEAssumeAConversa() throws Exception {
+        String token = sessao();
+        enviadosPeloPainel.clear();
+        recusar = false;
+        conversas.receberDoCliente(DONO, "5511955554444", "Oi", "WA-R-1", Instant.now());
+        UUID id = jdbc.sql("select id from conversa where telefone = '5511955554444'").query(UUID.class).single();
+
+        HttpResponse<String> resposta = chamar("POST", "/api/conversas/" + id + "/mensagens", "{\"texto\":\"  Olá, posso ajudar?  \"}", token);
+
+        assertThat(resposta.statusCode()).isEqualTo(200);
+        assertThat(resposta.body()).contains("\"estado\":\"HUMANO\"");
+        assertThat(enviadosPeloPainel).containsExactly(DONO + ":5511955554444:Olá, posso ajudar?");
+        assertThat(chamar("GET", "/api/conversas/" + id + "/mensagens", null, token).body())
+                .contains("\"origem\":\"CORRETOR\"").contains("Olá, posso ajudar?");
+    }
+
+    @Test
+    void responderPeloPainelRecusaVaziaConversaDeOutroEFalhaDoWhatsapp() throws Exception {
+        String token = sessao();
+        enviadosPeloPainel.clear();
+        conversas.receberDoCliente(DONO, "5511966665555", "Oi", "WA-R-2", Instant.now());
+        UUID id = jdbc.sql("select id from conversa where telefone = '5511966665555'").query(UUID.class).single();
+
+        assertThat(chamar("POST", "/api/conversas/" + id + "/mensagens", "{\"texto\":\"   \"}", token).statusCode())
+                .isEqualTo(400);
+        assertThat(chamar("POST", "/api/conversas/" + UUID.randomUUID() + "/mensagens", "{\"texto\":\"oi\"}", token).statusCode())
+                .isEqualTo(404);
+        assertThat(chamar("POST", "/api/conversas/" + id + "/mensagens", "{\"texto\":\"oi\"}", null).statusCode())
+                .isEqualTo(401);
+
+        recusar = true;
+        try {
+            assertThat(chamar("POST", "/api/conversas/" + id + "/mensagens", "{\"texto\":\"oi\"}", token).statusCode())
+                    .isEqualTo(502);
+        } finally {
+            recusar = false;
+        }
+        assertThat(enviadosPeloPainel).isEmpty();
+        assertThat(jdbc.sql("select estado from conversa where id = :id").param("id", id).query(String.class).single())
+                .isEqualTo("BOT");
+        assertThat(jdbc.sql("select count(*) from mensagem where origem = 'CORRETOR'").query(Integer.class).single()).isZero();
+    }
+
+    @Test
+    void mensagemDoClienteContaComoNaoLidaAteOCorretorAbrirAConversa() throws Exception {
+        String token = sessao();
+        conversas.receberDoCliente(DONO, "5511977778888", "Oi", "WA-L-1", Instant.now().minusSeconds(60));
+        conversas.receberDoCliente(DONO, "5511977778888", "Tem vaga?", "WA-L-2", Instant.now().minusSeconds(59));
+        UUID id = jdbc.sql("select id from conversa where telefone = '5511977778888'").query(UUID.class).single();
+
+        assertThat(chamar("GET", "/api/conversas", null, token).body()).contains("\"naoLidas\":2");
+
+        String ultima = jdbc.sql("select to_char(max(criada_em) at time zone 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') from mensagem")
+                .query(String.class).single();
+        assertThat(chamar("POST", "/api/conversas/" + id + "/lida", "{\"ate\":\"" + ultima + "\"}", token).statusCode())
+                .isEqualTo(204);
+        assertThat(chamar("GET", "/api/conversas", null, token).body()).contains("\"naoLidas\":0");
+
+        // nova mensagem depois da leitura volta a contar; data ruim é 400; conversa de outro é 404
+        conversas.receberDoCliente(DONO, "5511977778888", "E então?", "WA-L-3", Instant.now().minusSeconds(30));
+        assertThat(chamar("GET", "/api/conversas", null, token).body()).contains("\"naoLidas\":1");
+        assertThat(chamar("POST", "/api/conversas/" + id + "/lida", "{\"ate\":\"ontem\"}", token).statusCode()).isEqualTo(400);
+        assertThat(chamar("POST", "/api/conversas/" + UUID.randomUUID() + "/lida", "{\"ate\":\"" + ultima + "\"}", token).statusCode())
+                .isEqualTo(404);
+    }
+
+    private HttpResponse<String> anexo(UUID id, byte[] conteudo, String token) throws Exception {
+        String limite = "----bizu";
+        var corpo = new java.io.ByteArrayOutputStream();
+        corpo.write(("--" + limite + "\r\nContent-Disposition: form-data; name=\"arquivo\"; filename=\"casa.png\"\r\n"
+                + "Content-Type: image/png\r\n\r\n").getBytes());
+        corpo.write(conteudo);
+        corpo.write(("\r\n--" + limite + "\r\nContent-Disposition: form-data; name=\"legenda\"\r\n\r\nFachada\r\n--"
+                + limite + "--\r\n").getBytes());
+        HttpRequest.Builder req = HttpRequest.newBuilder(URI.create("http://localhost:" + porta + "/api/conversas/" + id + "/anexos"))
+                .header("Content-Type", "multipart/form-data; boundary=" + limite)
+                .POST(HttpRequest.BodyPublishers.ofByteArray(corpo.toByteArray()));
+        if (token != null) {
+            req.header("Authorization", "Bearer " + token);
+        }
+        return http.send(req.build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    @Test
+    void corretorEnviaAnexoPeloPainel() throws Exception {
+        String token = sessao();
+        enviadosPeloPainel.clear();
+        recusar = false;
+        conversas.receberDoCliente(DONO, "5511911112222", "Oi", "WA-A-1", Instant.now());
+        UUID id = jdbc.sql("select id from conversa where telefone = '5511911112222'").query(UUID.class).single();
+
+        assertThat(anexo(id, new byte[] {1, 2, 3}, null).statusCode()).isEqualTo(401);
+        assertThat(anexo(id, new byte[0], token).statusCode()).isEqualTo(400);
+        assertThat(anexo(UUID.randomUUID(), new byte[] {1}, token).statusCode()).isEqualTo(404);
+        assertThat(enviadosPeloPainel).isEmpty();
+
+        HttpResponse<String> ok = anexo(id, new byte[] {1, 2, 3}, token);
+
+        assertThat(ok.statusCode()).isEqualTo(200);
+        assertThat(ok.body()).contains("\"estado\":\"HUMANO\"");
+        assertThat(enviadosPeloPainel).containsExactly(DONO + ":5511911112222:image:casa.png");
+        assertThat(chamar("GET", "/api/conversas/" + id + "/mensagens", null, token).body()).contains("[imagem] Fachada");
+
+        recusar = true;
+        try {
+            assertThat(anexo(id, new byte[] {1}, token).statusCode()).isEqualTo(502);
+        } finally {
+            recusar = false;
+        }
     }
 
     @Test

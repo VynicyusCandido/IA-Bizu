@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 const ESTILO = {
   CLIENTE: { lado: "items-start", balao: "bg-card border", rotulo: null },
   IA: { lado: "items-end", balao: "bg-secondary text-secondary-foreground", rotulo: "IA" },
-  CORRETOR: { lado: "items-end", balao: "bg-primary text-primary-foreground", rotulo: "Você" },
+  CORRETOR: { lado: "items-end", balao: "border border-primary/40 bg-primary/20 text-foreground", rotulo: "Você" },
 } as const;
 
 /** Cliente à esquerda; IA e corretor à direita, com um rótulo discreto de quem falou. */

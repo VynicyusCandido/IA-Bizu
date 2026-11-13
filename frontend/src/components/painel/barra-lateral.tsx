@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
 import { AvatarDoContato } from "@/components/conversas/avatar-do-contato";
+import { AlternarTema } from "@/components/painel/alternar-tema";
 import { Logo } from "@/components/painel/logo";
 import { ITENS, useAtivo } from "@/components/painel/navegacao";
 import { buscar, type Conta, type ConversaResumo, type SituacaoWhatsapp } from "@/lib/api";
@@ -42,15 +43,18 @@ export function BarraLateral() {
   return (
     <aside className="hidden shrink-0 p-6 pr-0 md:flex">
       <div className="flex w-64 flex-col gap-5 rounded-3xl bg-zinc-950 p-4 text-zinc-50 ring-1 ring-white/10 dark:bg-zinc-900">
-        <Link href="/conversas" className="flex flex-col gap-2 px-1 pt-1">
-          <span className="flex items-center gap-3">
-            <Logo className="size-9 bg-zinc-100 text-zinc-900" />
-            <span className="text-xl font-semibold tracking-tight">Bizu</span>
-          </span>
+        <div className="flex flex-col gap-2 px-1 pt-1">
+          <div className="flex items-center justify-between gap-3">
+            <Link href="/conversas" className="flex items-center gap-3">
+              <Logo className="size-9 bg-primary text-primary-foreground" />
+              <span className="text-xl font-semibold tracking-tight">Bizu</span>
+            </Link>
+            <AlternarTema className="text-zinc-400 hover:bg-zinc-800 hover:text-primary dark:hover:bg-zinc-800 dark:hover:text-primary" />
+          </div>
           <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
             Atendimento no WhatsApp
           </span>
-        </Link>
+        </div>
 
         <Link
           href="/conexao"
@@ -79,12 +83,12 @@ export function BarraLateral() {
                   ativo(href) && "bg-zinc-800 text-zinc-50",
                 )}
               >
-                <Icone className="size-5" aria-hidden />
+                <Icone className={cn("size-5", ativo(href) && "text-primary")} aria-hidden />
                 {rotulo}
                 {href === "/conversas" && comVoce > 0 && (
                   <span
                     title="Conversas com você"
-                    className="ml-auto grid min-w-5 place-items-center rounded-md bg-zinc-700 px-1.5 text-[11px] font-semibold text-zinc-50"
+                    className="ml-auto grid min-w-5 place-items-center rounded-md bg-primary px-1.5 text-[11px] font-semibold text-primary-foreground"
                   >
                     {comVoce}
                   </span>
@@ -104,7 +108,7 @@ export function BarraLateral() {
             type="button"
             onClick={sair}
             aria-label="Sair"
-            className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500"
+            className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500"
           >
             <LogOut className="size-4" aria-hidden />
           </button>

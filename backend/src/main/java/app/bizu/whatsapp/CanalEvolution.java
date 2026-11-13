@@ -1,7 +1,9 @@
 package app.bizu.whatsapp;
 
+import app.bizu.conversa.AgendaDoCorretor;
 import app.bizu.conversa.Canal;
 import app.bizu.conversa.Conexao;
+import app.bizu.conversa.FotoDoContato;
 import app.bizu.conversa.HistoricoDeConversas;
 import app.bizu.conversa.HistoricoDoCorretor;
 import app.bizu.corretor.Corretor;
@@ -14,6 +16,7 @@ import java.util.Map;
 import java.util.Optional;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
@@ -24,7 +27,7 @@ import tools.jackson.databind.JsonNode;
  * ele abre a conexão. Formato a confirmar contra uma instância real.
  */
 @Component
-class CanalEvolution implements Canal, Conexao, HistoricoDoCorretor, HistoricoDeConversas {
+class CanalEvolution implements Canal, Conexao, HistoricoDoCorretor, HistoricoDeConversas, AgendaDoCorretor, FotoDoContato {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     record Resposta(Chave key) {
@@ -47,7 +50,12 @@ class CanalEvolution implements Canal, Conexao, HistoricoDoCorretor, HistoricoDe
         this.props = props;
         this.corretores = corretores;
         this.segredoDoWebhook = segredoDoWebhook;
+        // Sem timeout, uma Evolution parada deixaria a requisição (e a importação) pendurada para sempre.
+        var fabrica = new SimpleClientHttpRequestFactory();
+        fabrica.setConnectTimeout(5_000);
+        fabrica.setReadTimeout(30_000);
         this.http = RestClient.builder()
+                .requestFactory(fabrica)
                 .baseUrl(props.baseUrl())
                 .defaultHeader("apikey", props.apiKey())
                 .build();
@@ -64,6 +72,28 @@ class CanalEvolution implements Canal, Conexao, HistoricoDoCorretor, HistoricoDe
                 .body(Resposta.class);
         if (resposta == null || resposta.key() == null || resposta.key().id() == null) {
             throw new IllegalStateException("A Evolution não devolveu o ID da mensagem enviada");
+        }
+        return resposta.key().id();
+    }
+
+    /** Mídia em base64 pelo sendMedia da Evolution v2. Formato conferido só na documentação, não numa entrega real. */
+    @Override
+    public String enviarMidia(String corretorId, String telefone, Midia midia) {
+        String instancia = instanciaDe(corretorId)
+                .orElseThrow(() -> new IllegalStateException("O corretor " + corretorId + " ainda não conectou o WhatsApp"));
+        Map<String, Object> corpo = new java.util.HashMap<>();
+        corpo.put("number", telefone);
+        corpo.put("mediatype", midia.tipo());
+        corpo.put("mimetype", midia.mimetype());
+        corpo.put("fileName", midia.nome());
+        corpo.put("media", java.util.Base64.getEncoder().encodeToString(midia.bytes()));
+        if (midia.legenda() != null && !midia.legenda().isBlank()) {
+            corpo.put("caption", midia.legenda().strip());
+        }
+        Resposta resposta = http.post().uri("/message/sendMedia/{instancia}", instancia)
+                .body(corpo).retrieve().body(Resposta.class);
+        if (resposta == null || resposta.key() == null || resposta.key().id() == null) {
+            throw new IllegalStateException("A Evolution não devolveu o ID da mídia enviada");
         }
         return resposta.key().id();
     }
@@ -102,6 +132,31 @@ class CanalEvolution implements Canal, Conexao, HistoricoDoCorretor, HistoricoDe
         } catch (RuntimeException e) {
             return null;
         }
+    }
+
+    /** O contato existe na agenda do corretor (findContacts) e está salvo. Quem não aparece lá é um desconhecido. */
+    @Override
+    public boolean salvo(String corretorId, String identificador) {
+        Optional<String> instancia = instanciaDe(corretorId);
+        if (instancia.isEmpty()) {
+            return false;
+        }
+        JsonNode contatos = http.post().uri("/chat/findContacts/{instancia}", instancia.get())
+                .body(Map.of("where", Map.of("remoteJid", identificador)))
+                .retrieve().body(JsonNode.class);
+        return contatos != null && contatos.isArray() && contatos.size() > 0
+                && contatos.get(0).path("isSaved").asBoolean(false);
+    }
+
+    /** Foto de um contato (fetchProfilePictureUrl). Contato sem foto visível devolve nulo, e às vezes demora. */
+    @Override
+    public Optional<String> de(String corretorId, String identificador) {
+        return instanciaDe(corretorId).map(instancia -> {
+            JsonNode resposta = http.post().uri("/chat/fetchProfilePictureUrl/{instancia}", instancia)
+                    .body(Map.of("number", identificador)).retrieve().body(JsonNode.class);
+            String url = resposta == null ? "" : resposta.path("profilePictureUrl").asString("");
+            return url.startsWith("https://") ? url : null;
+        });
     }
 
     /** Só texto enviado pelo corretor em conversa individual. Formato a confirmar contra a instância real. */

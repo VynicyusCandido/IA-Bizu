@@ -1,6 +1,7 @@
 package app.bizu.whatsapp;
 
 import app.bizu.conversa.ConversaService;
+import app.bizu.conversa.ConversaService.Resultado;
 import app.bizu.corretor.Corretor;
 import app.bizu.corretor.CorretorService;
 import java.nio.charset.StandardCharsets;
@@ -73,12 +74,15 @@ class WebhookController {
         var telefone = webhook.telefone();
         var texto = webhook.texto();
         if (telefone.isPresent() && texto.isPresent()) {
-            if (webhook.fromMe()) {
-                conversas.receberDoCorretor(corretorId, telefone.get(), texto.get(), webhook.idMensagem(),
-                        relogio.instant());
-            } else {
-                conversas.receberDoCliente(corretorId, telefone.get(), webhook.nomeDoContato().orElse(null),
-                        texto.get(), webhook.idMensagem(), relogio.instant());
+            Resultado resultado = webhook.fromMe()
+                    ? conversas.receberDoCorretor(corretorId, telefone.get(), texto.get(), webhook.idMensagem(),
+                            relogio.instant())
+                    : conversas.receberDoCliente(corretorId, telefone.get(), webhook.nomeDoContato().orElse(null),
+                            texto.get(), webhook.idMensagem(), relogio.instant());
+            if (resultado != Resultado.DUPLICADA && resultado != Resultado.ECO) {
+                // A foto vem do WhatsApp e pode demorar: busca em segundo plano para o webhook responder logo.
+                String telefoneDoContato = telefone.get();
+                Thread.startVirtualThread(() -> conversas.completarFoto(corretorId, telefoneDoContato));
             }
         }
         return ResponseEntity.ok().build();

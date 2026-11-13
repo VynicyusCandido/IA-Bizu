@@ -79,6 +79,25 @@ class ConversaRepository {
                 .param("id", id).param("n", nome.strip()).update();
     }
 
+    /** Conversa ativa deste contato que só tem a primeira mensagem e ainda está sem foto. */
+    Optional<UUID> semFotoRecemCriada(String corretorId, String telefone) {
+        return jdbc.sql("""
+                select c.id from conversa c
+                 where c.corretor_id = :c and c.telefone = :t and c.ativa and c.foto_url is null
+                   and (select count(*) from mensagem m where m.conversa_id = c.id) = 1
+                """)
+                .param("c", corretorId).param("t", telefone).query(UUID.class).optional();
+    }
+
+    /** Avança até onde o corretor leu a conversa (nunca recua). Falso se a conversa não é deste corretor. */
+    boolean marcarLida(String corretorId, UUID id, Instant ate) {
+        return jdbc.sql("""
+                update conversa set lida_em = greatest(coalesce(lida_em, :ate), :ate)
+                 where id = :id and corretor_id = :c
+                """)
+                .param("id", id).param("c", corretorId).param("ate", Tempo.sql(ate)).update() == 1;
+    }
+
     /** Guarda a foto do contato (só https); foto em branco não apaga a que já existe. */
     void atualizarFoto(UUID id, String url) {
         if (url == null || !url.startsWith("https://")) {
@@ -120,7 +139,10 @@ class ConversaRepository {
                 select c.id, c.telefone, c.estado, c.respostas_ia, c.ultima_atividade_em,
                        l.finalidade, l.regiao, l.faixa_valor, l.prazo, l.imovel_citado,
                        left(u.texto, 120) as ultima_mensagem, u.origem as ultima_origem,
-                       coalesce(c.nome_contato, ci.nome) as nome, c.foto_url
+                       coalesce(c.nome_contato, ci.nome) as nome, c.foto_url,
+                       (select count(*) from mensagem mu
+                         where mu.conversa_id = c.id and mu.origem = 'CLIENTE'
+                           and (c.lida_em is null or mu.criada_em > c.lida_em)) as nao_lidas
                   from conversa c
                   left join lead l on l.conversa_id = c.id
                   left join contato_ignorado ci on ci.corretor_id = c.corretor_id and ci.telefone = c.telefone
@@ -146,7 +168,8 @@ class ConversaRepository {
                         rs.getString("ultima_mensagem"),
                         rs.getString("ultima_origem"),
                         rs.getString("nome"),
-                        rs.getString("foto_url")))
+                        rs.getString("foto_url"),
+                        rs.getInt("nao_lidas")))
                 .list();
     }
 
