@@ -100,7 +100,6 @@ export function CampoDeMensagem({ id }: { id: string }) {
           disabled={enviando}
           aria-label="Anexar arquivo"
           title="Anexar arquivo"
-          className="text-muted-foreground hover:text-primary"
         >
           <Paperclip />
         </Button>
